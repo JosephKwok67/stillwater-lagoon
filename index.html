@@ -3,26 +3,94 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>静水 · Stillwater Lagoon</title>
+    <title>钓鱼大冒险 · 静水泻湖</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <div id="app">
       <canvas id="scene-canvas"></canvas>
 
-      <!-- Subtle bottom-left title badge -->
-      <div class="title-overlay">
-        <div class="title-main">静水</div>
-        <div class="title-sub">WASD / 方向键划船 · 25 种生态鱼类自由游弋 · 点击右上「鱼种图鉴」可跟踪观赏每种鱼</div>
+      <!-- Top-left cozy player status card featuring Codex portraits & UI icons -->
+      <div class="hud-top-left">
+        <div class="player-badge">
+          <img class="player-avatar-img" src="/assets/portraits/player/neutral.png" alt="草帽垂钓者" />
+          <div class="player-badge-meta">
+            <div class="player-badge-row">
+              <span id="hud-day-badge" class="day-pill">第 1 天</span>
+              <span id="hud-mode-badge" class="mode-pill">划船出海</span>
+            </div>
+            <div class="resource-row">
+              <span class="res-chip" title="渔村贝币">
+                <img src="/assets/icons/ui/coin.png" alt="贝币" />
+                <b id="hud-coins">120</b>
+              </span>
+              <span class="res-chip" title="放生回响灵气">
+                <img src="/assets/icons/ui/echo_leaf.png" alt="回响" />
+                <b id="hud-echo">0</b>
+              </span>
+              <span class="res-chip" title="随身鱼护">
+                <img src="/assets/icons/ui/basket.png" alt="鱼护" />
+                <b id="hud-basket">0</b>
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Compact top-right navigation & look-dev bar -->
       <div class="hud-top-right">
         <button id="btn-toggle-fish" class="pill-btn" title="查看水下全部 25 种生物并点击跟踪观察">鱼种图鉴</button>
         <button id="btn-focus-town" class="pill-btn" title="切换至岸边小镇与自家小屋视角">看岸边小镇</button>
-        <button id="btn-reset-cam" class="pill-btn" title="恢复标准俯视构图">重置视角</button>
+        <button id="btn-reset-cam" class="pill-btn" title="恢复标准跟随视角">重置视角</button>
         <button id="btn-toggle-panel" class="pill-btn" title="展开画风与天气参数">画风与天气</button>
       </div>
+
+      <!-- World-anchored floating [E] interaction prompt -->
+      <div id="interact-prompt" class="interact-prompt hidden">
+        <span id="interact-key" class="interact-key">E</span>
+        <span id="interact-text" class="interact-text">交互</span>
+      </div>
+
+      <!-- Cozy storybook toast notification with Codex portrait -->
+      <div id="toast-banner" class="toast-banner hidden">
+        <img id="toast-portrait" class="toast-portrait" src="/assets/portraits/player/neutral.png" alt="" />
+        <span id="toast-msg" class="toast-msg"></span>
+      </div>
+
+      <!-- Bottom-center compact gear & action dock (uses Codex rods/baits/bobber icons) -->
+      <div class="hud-bottom-dock">
+        <button id="btn-cycle-rod" class="gear-btn" title="点击切换鱼竿预览">
+          <img id="btn-rod-img" src="/assets/icons/rods/rod_bamboo.png" alt="鱼竿" />
+          <span id="btn-rod-name">初始竹竿</span>
+        </button>
+        <button id="btn-cycle-bait" class="gear-btn" title="点击切换鱼饵预览">
+          <img id="btn-bait-img" src="/assets/icons/baits/bait_dough.png" alt="鱼饵" />
+          <span id="btn-bait-name">面团香饵</span>
+        </button>
+        <button id="btn-cast-action" class="gear-btn gear-btn-accent" title="在船上或栈桥边按 Space / F 甩竿试手">
+          <img src="/assets/icons/ui/bobber.png" alt="浮标" />
+          <span>甩竿 / 收竿 <em>Space</em></span>
+        </button>
+        <button id="btn-warp-home" class="gear-btn gear-btn-subtle" title="一键回到自家小屋码头">
+          <span>回自家码头</span>
+        </button>
+      </div>
+
+      <!-- Subtle bottom-left control legend -->
+      <div class="title-overlay">
+        <div class="title-main">钓鱼大冒险 · 静水</div>
+        <div class="title-sub">WASD 划船/行走 · Shift 小跑 · E 上下船/开关门/互动 · Space 甩竿</div>
+      </div>
+
+      <!-- Home Indoor Aquarium Close-up Inspection Overlay -->
+      <aside id="aquarium-modal" class="tweak-panel aquarium-modal hidden">
+        <div class="panel-header">
+          <span>家里的大生态鱼缸</span>
+          <button id="btn-close-aquarium" class="icon-close" aria-label="关闭">×</button>
+        </div>
+        <div class="fish-guide-tip">每一条带回家的鱼都会按真实体型在这里自由游动（按 Esc 或 × 返回屋内）</div>
+        <div id="aquarium-fish-list" class="aq-fish-list"></div>
+      </aside>
 
       <!-- Collapsible Fish Species Observer Drawer -->
       <aside id="fish-panel" class="tweak-panel fish-panel hidden">
@@ -30,7 +98,7 @@
           <span>水域图鉴 <em id="fish-total-badge" class="badge-count"></em></span>
           <button id="btn-close-fish" class="icon-close" aria-label="关闭">×</button>
         </div>
-        <div class="fish-guide-tip">点击任意鱼种，镜头会自动贴近跟踪游动实景（按 WASD 回到小船）</div>
+        <div class="fish-guide-tip">点击任意鱼种，镜头会自动贴近跟踪游动实景（按 WASD 回到主角）</div>
         <div id="fish-catalog-list" class="species-list"></div>
       </aside>
 

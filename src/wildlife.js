@@ -131,9 +131,22 @@ export function buildAquaticEcosystem(scene) {
         }
       }
 
-      // Natural individual size variance (±18%) so fish within the same species vary organically!
-      const sizeVar = 0.84 + rng() * 0.34;
+      // Rich individual size variety within every species (Small / Normal / Large / Rare Crown Trophy!)
+      const roll = rng();
+      let sizeVar;
+      let grade = '普通';
+      if (roll > 0.94) {
+        sizeVar = 1.38 + rng() * 0.18;
+        grade = '王冠';
+      } else if (roll > 0.74) {
+        sizeVar = 1.15 + rng() * 0.22;
+        grade = '大物';
+      } else {
+        sizeVar = 0.76 + rng() * 0.38;
+      }
       const scale = spec.baseScale * sizeVar;
+      const baseLenCm = Math.max(4, Math.round(spec.baseScale * 36));
+      const lengthCm = Math.max(3, Math.round(baseLenCm * sizeVar));
 
       const heading = rng() * Math.PI * 2;
       const speedVar = spec.speed * (0.86 + rng() * 0.28);
@@ -149,6 +162,7 @@ export function buildAquaticEcosystem(scene) {
       }
 
       agents.push({
+        speciesId: spec.id,
         zone,
         pos: new THREE.Vector3(x, y, z),
         vel: new THREE.Vector3(Math.cos(heading) * speedVar, 0, Math.sin(heading) * speedVar),
@@ -158,6 +172,9 @@ export function buildAquaticEcosystem(scene) {
         baseSpeed: speedVar,
         targetDepth: y,
         scale,
+        sizeRatio: sizeVar,
+        lengthCm,
+        grade,
         phase: rng() * Math.PI * 2,
         wanderAngle: heading,
         stateTimer: 1.0 + rng() * 3.5,
@@ -198,6 +215,24 @@ export function buildAquaticEcosystem(scene) {
       const rt = speciesById.get(speciesId);
       if (!rt || !rt.agents.length) return null;
       return rt.agents[index % rt.agents.length].pos;
+    },
+
+    /**
+     * Finds the closest real fish swimming near a fishing bobber (x, z) within radius!
+     */
+    findClosestFishNear(x, z, maxRadius = 4.6) {
+      let best = null;
+      let bestDist = maxRadius;
+      for (const rt of speciesRuntimes) {
+        for (const agent of rt.agents) {
+          const d = Math.hypot(agent.pos.x - x, agent.pos.z - z);
+          if (d < bestDist) {
+            bestDist = d;
+            best = { spec: rt.spec, agent, dist: d };
+          }
+        }
+      }
+      return best;
     },
 
     update(dt, elapsedTime, boatState, colliders, addRipple) {
@@ -584,8 +619,23 @@ export function buildSwimmingCompanion(scene) {
   tail.rotation.z = 1.12;
   root.add(tail);
 
+  // Signature coral-red bandana matching Codex's approved turnaround sheet!
+  const bandanaMat = new THREE.MeshStandardMaterial({ color: 0xc84b34, roughness: 0.82 });
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.145, 0.036, 7, 14), bandanaMat);
+  collar.rotation.y = Math.PI / 2;
+  collar.rotation.x = 0.26;
+  collar.position.set(0.17, 0.03, 0);
+  const bib = new THREE.Mesh(new THREE.ConeGeometry(0.115, 0.16, 4), bandanaMat);
+  bib.rotation.z = Math.PI;
+  bib.rotation.y = Math.PI / 4;
+  bib.position.set(0.24, -0.065, 0);
+  const knot = new THREE.Mesh(new THREE.SphereGeometry(0.042, 7, 6), bandanaMat);
+  knot.position.set(0.09, 0.14, 0);
+  root.add(collar, bib, knot);
+
   const pos = new THREE.Vector3(-1.55, -0.02, -1.45);
   let yaw = 0.42;
+  let onLand = false;
   root.scale.setScalar(0.86);
   root.position.copy(pos);
   root.rotation.y = yaw;
@@ -599,10 +649,81 @@ export function buildSwimmingCompanion(scene) {
     setVisible(v) {
       root.visible = v;
     },
-    update(dt, elapsedTime, boatState, addRipple) {
+    teleportNear(x, y, z, landMode) {
+      pos.set(x, y, z);
+      onLand = Boolean(landMode);
+      root.position.set(x, landMode ? y + 0.22 : 0.005, z);
+    },
+    update(dt, elapsedTime, boatState, addRipple, landContext = null) {
       if (!root.visible) return;
       const clampedDt = Math.min(dt, 0.05);
 
+      const walkingMode = Boolean(landContext && landContext.walking);
+
+      if (walkingMode) {
+        // ---- AMPHIBIOUS LAND FOLLOW MODE (Trots cheerfully beside player on piers, town & indoors!) ----
+        onLand = true;
+        const pPos = landContext.playerPos;
+        const pYaw = landContext.playerYaw;
+        const backX = -Math.sin(pYaw);
+        const backZ = -Math.cos(pYaw);
+        const sideX = Math.cos(pYaw);
+        const sideZ = -Math.sin(pYaw);
+
+        const targetX = pPos.x + backX * 0.95 + sideX * 0.72;
+        const targetZ = pPos.z + backZ * 0.95 + sideZ * 0.72;
+
+        const dx = targetX - pos.x;
+        const dz = targetZ - pos.z;
+        const dist = Math.hypot(dx, dz);
+
+        if (dist > 8.5) {
+          // Gently warp to pier/beside player if player hopped far onto land
+          pos.x = targetX;
+          pos.z = targetZ;
+        } else if (dist > 0.14) {
+          const speed = clamp(dist * 2.5, 0.9, 4.6);
+          const step = Math.min(dist, speed * clampedDt);
+          const candX = pos.x + (dx / dist) * step;
+          const candZ = pos.z + (dz / dist) * step;
+          if (!landContext.town || landContext.town.isWalkableLand(candX, candZ)) {
+            pos.x = candX;
+            pos.z = candZ;
+            if (landContext.town) landContext.town.resolveLandCollisions(pos, 0.22);
+          }
+        }
+
+        const groundY = landContext.town ? landContext.town.getWalkableElevation(pos.x, pos.z) : 0.5;
+        const isMoving = dist > 0.22;
+
+        const desiredYaw = isMoving ? Math.atan2(-dz, dx) : Math.atan2(-(pPos.z - pos.z), pPos.x - pos.x);
+        let diff = desiredYaw - yaw;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        yaw += diff * clamp(clampedDt * 7.5, 0, 1);
+
+        const trotPhase = elapsedTime * (isMoving ? 11.5 : 3.0);
+        const bounce = isMoving ? Math.abs(Math.sin(trotPhase)) * 0.048 : Math.sin(elapsedTime * 2.4) * 0.008;
+
+        pos.y = THREE.MathUtils.lerp(pos.y, groundY, clamp(clampedDt * 12, 0, 1));
+        root.position.set(pos.x, pos.y + 0.18 + bounce, pos.z);
+        root.rotation.y = yaw;
+        root.rotation.x = 0;
+        root.rotation.z = isMoving ? Math.sin(trotPhase) * 0.06 : 0;
+
+        headGroup.rotation.y = Math.sin(elapsedTime * 1.6) * 0.16;
+        headGroup.rotation.z = isMoving ? 0.05 : 0;
+
+        const legAmp = isMoving ? 0.65 : 0.04;
+        pawFL.rotation.z = Math.sin(trotPhase) * legAmp;
+        pawFR.rotation.z = -Math.sin(trotPhase) * legAmp;
+        pawBL.rotation.z = -Math.sin(trotPhase) * legAmp;
+        pawBR.rotation.z = Math.sin(trotPhase) * legAmp;
+        tail.rotation.y = Math.sin(elapsedTime * (isMoving ? 12.0 : 8.5)) * 0.48;
+        return;
+      }
+
+      // ---- SWIMMING COMPANION MODE BESIDE THE BOAT ----
       const fwdX = Math.cos(boatState.yaw);
       const fwdZ = -Math.sin(boatState.yaw);
       const leftX = Math.sin(boatState.yaw);
@@ -611,6 +732,14 @@ export function buildSwimmingCompanion(scene) {
       const swimBobOffset = Math.sin(elapsedTime * 0.85) * 0.22;
       const targetX = boatState.pos.x + fwdX * (0.45 + swimBobOffset) - leftX * 2.25;
       const targetZ = boatState.pos.z + fwdZ * (0.45 + swimBobOffset) - leftZ * 2.25;
+
+      if (onLand) {
+        onLand = false;
+        // Hop smoothly back into the water beside the boat when boarding!
+        if (Math.hypot(targetX - pos.x, targetZ - pos.z) > 6.0 || getWorldElevation(pos.x, pos.z) >= -0.15) {
+          pos.set(targetX, 0, targetZ);
+        }
+      }
 
       const dx = targetX - pos.x;
       const dz = targetZ - pos.z;
@@ -636,7 +765,8 @@ export function buildSwimmingCompanion(scene) {
       const paddleFreq = 5.5 + clamp(dist * 2.2, 0, 5.0);
       const paddlePhase = elapsedTime * paddleFreq;
 
-      root.position.set(pos.x, 0.005 + Math.sin(elapsedTime * 3.1) * 0.018, pos.z);
+      pos.y = THREE.MathUtils.lerp(pos.y, 0.005, clamp(clampedDt * 8, 0, 1));
+      root.position.set(pos.x, pos.y + Math.sin(elapsedTime * 3.1) * 0.018, pos.z);
       root.rotation.y = yaw;
       root.rotation.x = Math.sin(paddlePhase * 0.5) * 0.05;
       root.rotation.z = Math.cos(elapsedTime * 2.4) * 0.04;
@@ -659,7 +789,7 @@ export function buildSwimmingCompanion(scene) {
           z: pos.z + Math.sin(yaw) * 0.18,
           dirX: -Math.cos(yaw),
           dirZ: Math.sin(yaw),
-          mode: 1, // subtle organic dog paddle streak
+          mode: 1,
           radiusScale: 0.34,
           intensity: 0.65,
         });

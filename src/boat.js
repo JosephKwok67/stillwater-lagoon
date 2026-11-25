@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { clamp } from './noise.js';
 import { getWorldElevation } from './terrain.js';
-import { createWoodPlankTexture, createStrawHatTexture } from './textures.js';
+import { createWoodPlankTexture } from './textures.js';
 
 /**
  * Computes half-beam width of the cozy wooden rowboat at longitudinal coordinate u ∈ [0, 1]
@@ -284,7 +284,7 @@ function buildRowboatHull(woodTex) {
   rodGroup.add(reel);
   hullGroup.add(rodGroup);
 
-  return { hullGroup, lanternLight };
+  return { hullGroup, lanternLight, restingRod: rodGroup };
 }
 
 /**
@@ -457,23 +457,30 @@ function buildOar(side) {
 }
 
 /**
- * Creates the playable wooden rowboat, straw-hat angler, animated oars, and rowing controller
+ * Creates the playable wooden rowboat, animated oars, seat mount for the unified PlayerAvatar,
+ * and rowing / moored-idle physics controller!
  */
-export function createPlayableBoat(scene) {
+export function createPlayableBoat(scene, playerAvatar = null, initialPose = null) {
   const woodTex = createWoodPlankTexture();
-  const strawTex = createStrawHatTexture();
 
   const boatRoot = new THREE.Group();
   const boatVisual = new THREE.Group();
   boatRoot.add(boatVisual);
 
-  const { hullGroup, lanternLight } = buildRowboatHull(woodTex);
+  const { hullGroup, lanternLight, restingRod } = buildRowboatHull(woodTex);
   boatVisual.add(hullGroup);
 
-  const { angler, upperBody, headGroup, armL, armR } = buildAngler(strawTex);
-  // Seated comfortably on center bench facing forward (+X)
-  angler.position.set(-0.08, 0.25, 0);
-  boatVisual.add(angler);
+  // Standardized seat mount: rotates standard +Z character forward to align with boat +X bow!
+  const seatMount = new THREE.Group();
+  seatMount.position.set(-0.1, 0.07, 0);
+  seatMount.rotation.y = Math.PI / 2;
+  boatVisual.add(seatMount);
+
+  if (playerAvatar) {
+    seatMount.add(playerAvatar.root);
+    playerAvatar.root.position.set(0, 0, 0);
+    playerAvatar.root.rotation.set(0, 0, 0);
+  }
 
   // Port (-Z) and Starboard (+Z) oars mounted on gunwale oarlocks
   const oarLeft = buildOar(-1);
@@ -482,15 +489,17 @@ export function createPlayableBoat(scene) {
   oarRight.position.set(0.08, 0.39, 0.61);
   boatVisual.add(oarLeft, oarRight);
 
-  // Initial composition matching Stillwater screenshot:
-  // slightly below-left of frame center, pointing gently upper-right!
   const state = {
-    pos: new THREE.Vector3(-1.15, 0, 0.85),
-    yaw: 0.42, // radians (0 = +X right, +0.42 points upper-right along +X, -Z)
+    pos: new THREE.Vector3(initialPose?.x ?? -1.15, 0, initialPose?.z ?? 0.85),
+    yaw: initialPose?.yaw ?? 0.42,
     speed: 0,
     angVel: 0,
     rowPhase: 0.4,
     rowEffort: 0,
+    occupied: true,
+    fishingActive: false,
+    moorTargetPos: null,
+    moorTargetYaw: null,
   };
 
   boatRoot.scale.setScalar(0.88);
@@ -516,7 +525,6 @@ export function createPlayableBoat(scene) {
   window.addEventListener('keydown', onKey(true));
   window.addEventListener('keyup', onKey(false));
 
-  let wakeEmitTimer = 0.08;
   let wasRowing = false;
   let leftInWater = false;
   let rightInWater = false;
@@ -526,71 +534,116 @@ export function createPlayableBoat(scene) {
 
   return {
     root: boatRoot,
+    seatMount,
     state,
-    update(dt, elapsedTime, colliders, addRipple, nightGlow = 0.25) {
+
+    setOccupied(occupied) {
+      state.occupied = Boolean(occupied);
+      if (occupied) {
+        state.moorTargetPos = null;
+        state.moorTargetYaw = null;
+      } else {
+        state.speed = 0;
+        state.angVel = 0;
+        wasRowing = false;
+      }
+    },
+
+    setFishingActive(active) {
+      state.fishingActive = Boolean(active);
+      if (restingRod) restingRod.visible = !active;
+    },
+
+    moorAt(pos, yaw) {
+      state.moorTargetPos = pos.clone();
+      state.moorTargetYaw = yaw;
+      state.speed = 0;
+      state.angVel = 0;
+    },
+
+    clearKeys() {
+      keys.forward = keys.backward = keys.left = keys.right = false;
+    },
+
+    update(dt, elapsedTime, colliders, addRipple, nightGlow = 0.25, controlsEnabled = true) {
       const clampedDt = Math.min(dt, 0.05);
 
-      const throttle = (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0);
-      const steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
+      const canRow = state.occupied && controlsEnabled && !state.fishingActive;
+      const throttle = canRow ? (keys.forward ? 1 : 0) - (keys.backward ? 1 : 0) : 0;
+      const steer = canRow ? (keys.left ? 1 : 0) - (keys.right ? 1 : 0) : 0;
       const activeInput = Math.abs(throttle) > 0 || Math.abs(steer) > 0;
 
-      // Gentle rhythmic rowing acceleration with natural stroke surge & cozy water drag
-      const pullBoost = activeInput && Math.cos(state.rowPhase) < 0.15 ? 1.24 : 0.88;
-      const accel = (throttle > 0 ? 4.8 : throttle < 0 ? 3.1 : 0) * pullBoost;
-      state.speed += throttle * accel * clampedDt;
-      state.speed *= Math.exp(-1.52 * clampedDt);
-      state.speed = clamp(state.speed, -2.0, 4.1);
+      if (!state.occupied && state.moorTargetPos) {
+        // Gently nestle moored boat right alongside the wooden dock
+        state.pos.x = THREE.MathUtils.lerp(state.pos.x, state.moorTargetPos.x, clamp(clampedDt * 3.8, 0, 1));
+        state.pos.z = THREE.MathUtils.lerp(state.pos.z, state.moorTargetPos.z, clamp(clampedDt * 3.8, 0, 1));
+        if (state.moorTargetYaw !== null) {
+          let diff = state.moorTargetYaw - state.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          state.yaw += diff * clamp(clampedDt * 3.8, 0, 1);
+        }
+        state.speed *= Math.exp(-4.0 * clampedDt);
+        state.angVel *= Math.exp(-4.0 * clampedDt);
+      } else {
+        // Gentle rhythmic rowing acceleration with natural stroke surge & cozy water drag
+        const pullBoost = activeInput && Math.cos(state.rowPhase) < 0.15 ? 1.24 : 0.88;
+        const accel = (throttle > 0 ? 4.8 : throttle < 0 ? 3.1 : 0) * pullBoost;
+        state.speed += throttle * accel * clampedDt;
+        state.speed *= Math.exp(-1.52 * clampedDt);
+        state.speed = clamp(state.speed, -2.0, 4.1);
 
-      // Smooth steering (turning works both while moving and paddling in place!)
-      const turnRate = 2.15;
-      state.angVel += steer * turnRate * clampedDt * 2.9;
-      state.angVel *= Math.exp(-3.4 * clampedDt);
-      state.yaw += state.angVel * clampedDt;
+        const turnRate = 2.15;
+        state.angVel += steer * turnRate * clampedDt * 2.9;
+        state.angVel *= Math.exp(-3.4 * clampedDt);
+        state.yaw += state.angVel * clampedDt;
 
-      // Move boat along forward vector (+X rotated by yaw -> (cos yaw, -sin yaw))
-      const fwdX = Math.cos(state.yaw);
-      const fwdZ = -Math.sin(state.yaw);
-      state.pos.x += fwdX * state.speed * clampedDt;
-      state.pos.z += fwdZ * state.speed * clampedDt;
+        const fwdX = Math.cos(state.yaw);
+        const fwdZ = -Math.sin(state.yaw);
+        state.pos.x += fwdX * state.speed * clampedDt;
+        state.pos.z += fwdZ * state.speed * clampedDt;
 
-      // Keep inside expanded playable lagoon bounds (radius 44)
-      const distFromOrigin = Math.hypot(state.pos.x, state.pos.z);
-      if (distFromOrigin > 44.0) {
-        const nx = state.pos.x / distFromOrigin;
-        const nz = state.pos.z / distFromOrigin;
-        state.pos.x = nx * 44.0;
-        state.pos.z = nz * 44.0;
-        state.speed *= 0.85;
-      }
+        // Keep inside expanded playable lagoon bounds (radius 44)
+        const distFromOrigin = Math.hypot(state.pos.x, state.pos.z);
+        if (distFromOrigin > 44.0) {
+          const nx = state.pos.x / distFromOrigin;
+          const nz = state.pos.z / distFromOrigin;
+          state.pos.x = nx * 44.0;
+          state.pos.z = nz * 44.0;
+          state.speed *= 0.85;
+        }
 
-      // Smooth coastline & sandy beach collision via terrain elevation gradient
-      const elev = getWorldElevation(state.pos.x, state.pos.z);
-      if (elev > -0.34) {
-        const eps = 0.35;
-        const gx = getWorldElevation(state.pos.x + eps, state.pos.z) - getWorldElevation(state.pos.x - eps, state.pos.z);
-        const gz = getWorldElevation(state.pos.x, state.pos.z + eps) - getWorldElevation(state.pos.x, state.pos.z - eps);
-        const gLen = Math.hypot(gx, gz) || 1;
-        // Push gently downhill toward deeper water
-        const push = (elev + 0.34) * 1.15 + 0.04;
-        state.pos.x -= (gx / gLen) * push;
-        state.pos.z -= (gz / gLen) * push;
-        state.speed *= 0.62;
-      }
+        // Smooth coastline & sandy beach collision via terrain elevation gradient
+        const elev = getWorldElevation(state.pos.x, state.pos.z);
+        if (elev > -0.34) {
+          const eps = 0.35;
+          const gx = getWorldElevation(state.pos.x + eps, state.pos.z) - getWorldElevation(state.pos.x - eps, state.pos.z);
+          const gz = getWorldElevation(state.pos.x, state.pos.z + eps) - getWorldElevation(state.pos.x, state.pos.z - eps);
+          const gLen = Math.hypot(gx, gz) || 1;
+          const push = (elev + 0.34) * 1.15 + 0.04;
+          state.pos.x -= (gx / gLen) * push;
+          state.pos.z -= (gz / gLen) * push;
+          state.speed *= 0.62;
+        }
 
-      // Soft bouncy collision against emergent mossy islets & wooden town pier pilings
-      for (const c of colliders) {
-        const dx = state.pos.x - c.x;
-        const dz = state.pos.z - c.z;
-        const d = Math.hypot(dx, dz);
-        const minDist = c.radius + 0.88;
-        if (d < minDist && d > 0.001) {
-          const nx = dx / d;
-          const nz = dz / d;
-          state.pos.x = c.x + nx * minDist;
-          state.pos.z = c.z + nz * minDist;
-          state.speed *= 0.65;
+        // Soft bouncy collision against emergent mossy islets & wooden town pier pilings
+        for (const c of colliders) {
+          const dx = state.pos.x - c.x;
+          const dz = state.pos.z - c.z;
+          const d = Math.hypot(dx, dz);
+          const minDist = c.radius + 0.88;
+          if (d < minDist && d > 0.001) {
+            const nx = dx / d;
+            const nz = dz / d;
+            state.pos.x = c.x + nx * minDist;
+            state.pos.z = c.z + nz * minDist;
+            state.speed *= 0.65;
+          }
         }
       }
+
+      const fwdX = Math.cos(state.yaw);
+      const fwdZ = -Math.sin(state.yaw);
 
       // Buoyant bobbing, gentle roll & pitch
       const bobY =
@@ -604,21 +657,16 @@ export function createPlayableBoat(scene) {
       boatVisual.rotation.x = THREE.MathUtils.lerp(boatVisual.rotation.x, targetRoll, clampedDt * 5);
       boatVisual.rotation.z = THREE.MathUtils.lerp(boatVisual.rotation.z, targetPitch, clampedDt * 5);
 
-      // Warm lantern glow dynamically brightens at sunset/dusk!
       lanternLight.intensity =
-        (0.65 + nightGlow * 1.25) +
+        0.65 +
+        nightGlow * 1.25 +
         Math.sin(elapsedTime * 4.5) * 0.08 +
         Math.cos(elapsedTime * 7.3) * 0.05;
 
-      // ---------------------------------------------------------------------
-      // Zero-Delay Rowing Stroke Kinematics & Instant Water Ripple Response!
-      // ---------------------------------------------------------------------
+      // Zero-Delay Rowing Stroke Kinematics
       const strokeDir = throttle < 0 ? -1 : 1;
-
-      // On the VERY FIRST FRAME of pressing movement, enter the water-catch stroke immediately!
       if (activeInput && !wasRowing) {
         state.rowEffort = Math.max(state.rowEffort, 0.85);
-        // Position oars right into the water-catch phase (cos ≈ -0.35 -> dipping in & pulling!)
         state.rowPhase = strokeDir > 0 ? 1.95 : -1.95;
         leftInWater = false;
         rightInWater = false;
@@ -637,37 +685,44 @@ export function createPlayableBoat(scene) {
       const strokeSpeed = activeInput ? 4.8 * strokeDir : 0.65;
       state.rowPhase += strokeSpeed * clampedDt;
 
-      // Left and right oars sweep symmetrically when going straight, asymmetrically when turning
       const leftPower = clamp(state.rowEffort * (1.0 - steer * 0.48), 0, 1);
       const rightPower = clamp(state.rowEffort * (1.0 + steer * 0.48), 0, 1);
 
-      const sweepL = Math.sin(state.rowPhase) * 0.58 * leftPower + Math.sin(elapsedTime * 1.2) * 0.035;
-      const dipL = -0.25 + Math.cos(state.rowPhase) * 0.17 * leftPower;
-      oarLeft.rotation.y = -0.22 + sweepL;
-      oarLeft.rotation.x = -dipL;
+      // Rest oars neatly angled back when unoccupied or fishing!
+      if (!state.occupied || state.fishingActive) {
+        oarLeft.rotation.y = THREE.MathUtils.lerp(oarLeft.rotation.y, -0.78, clampedDt * 5);
+        oarLeft.rotation.x = THREE.MathUtils.lerp(oarLeft.rotation.x, 0.06, clampedDt * 5);
+        oarRight.rotation.y = THREE.MathUtils.lerp(oarRight.rotation.y, 0.78, clampedDt * 5);
+        oarRight.rotation.x = THREE.MathUtils.lerp(oarRight.rotation.x, -0.06, clampedDt * 5);
+      } else {
+        const sweepL = Math.sin(state.rowPhase) * 0.58 * leftPower + Math.sin(elapsedTime * 1.2) * 0.035;
+        const dipL = -0.25 + Math.cos(state.rowPhase) * 0.17 * leftPower;
+        oarLeft.rotation.y = -0.22 + sweepL;
+        oarLeft.rotation.x = -dipL;
 
-      const sweepR = Math.sin(state.rowPhase) * 0.58 * rightPower + Math.sin(elapsedTime * 1.2 + 0.5) * 0.035;
-      const dipR = -0.25 + Math.cos(state.rowPhase) * 0.17 * rightPower;
-      oarRight.rotation.y = 0.22 - sweepR;
-      oarRight.rotation.x = dipR;
+        const sweepR = Math.sin(state.rowPhase) * 0.58 * rightPower + Math.sin(elapsedTime * 1.2 + 0.5) * 0.035;
+        const dipR = -0.25 + Math.cos(state.rowPhase) * 0.17 * rightPower;
+        oarRight.rotation.y = 0.22 - sweepR;
+        oarRight.rotation.x = dipR;
+      }
 
-      // Update world matrices immediately so oar tip world positions match THIS frame's angle!
       boatRoot.updateMatrixWorld(true);
 
-      // Angler torso leans harmoniously with the rowing stroke
-      const lean = -Math.sin(state.rowPhase) * 0.19 * state.rowEffort + Math.sin(elapsedTime * 1.8) * 0.025;
-      upperBody.rotation.z = lean;
-      headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, steer * 0.28, clampedDt * 4.5);
-      armL.rotation.z = Math.sin(state.rowPhase) * 0.26 * leftPower;
-      armR.rotation.z = Math.sin(state.rowPhase) * 0.26 * rightPower;
+      // Drive seated rowing pose on the unified PlayerAvatar when occupying boat & not casting
+      if (playerAvatar && state.occupied && !state.fishingActive && controlsEnabled) {
+        playerAvatar.updateAnimation('Sit_Row', clampedDt, elapsedTime, {
+          rowPhase: state.rowPhase,
+          rowEffort: state.rowEffort,
+          steer,
+          leftPower,
+          rightPower,
+        });
+      }
 
-      // ---------------------------------------------------------------------
-      // Instant Organic Oar Blade Eddies & Fluid Drag Swirls (No mechanical stern circles!)
-      // ---------------------------------------------------------------------
-      if (addRipple) {
+      // Instant Organic Oar Blade Eddies
+      if (addRipple && state.occupied && !state.fishingActive) {
         const cosPhase = Math.cos(state.rowPhase);
 
-        // Left oar: instant frothy splash eddy on water entry + organic trailing drag swirls during pull!
         const leftNowInWater = leftPower > 0.22 && cosPhase < 0.22;
         if (leftNowInWater) {
           leftDragTimer -= clampedDt;
@@ -679,7 +734,7 @@ export function createPlayableBoat(scene) {
               z: oarTipWorld.z,
               dirX: -fwdX,
               dirZ: -fwdZ,
-              mode: 0, // organic oar eddy & splash puddle
+              mode: 0,
               radiusScale: 0.62,
               intensity: 0.85,
             });
@@ -701,7 +756,6 @@ export function createPlayableBoat(scene) {
         }
         leftInWater = leftNowInWater;
 
-        // Right oar: instant frothy splash eddy + organic pull-stroke swirl!
         const rightNowInWater = rightPower > 0.22 && cosPhase < 0.22;
         if (rightNowInWater) {
           rightDragTimer -= clampedDt;
