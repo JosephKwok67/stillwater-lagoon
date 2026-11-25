@@ -810,6 +810,8 @@ export function buildSwimmingCompanion(scene) {
   const pos = new THREE.Vector3(-1.55, -0.02, -1.45);
   let yaw = 0.42;
   let onLand = false;
+  let dogGlb = null;
+  const glbHolder = new THREE.Group();
   root.scale.setScalar(0.86);
   root.position.copy(pos);
   root.rotation.y = yaw;
@@ -822,6 +824,20 @@ export function buildSwimmingCompanion(scene) {
     pos,
     setVisible(v) {
       root.visible = v;
+    },
+    attachGlb(adapter) {
+      if (!adapter || !adapter.model) return;
+      dogGlb = adapter;
+      for (const ch of [...root.children]) {
+        ch.visible = false;
+      }
+      glbHolder.clear();
+      // Blender GLB faces +Z; companion root swims/trots along +X -> rotate +90deg Y!
+      adapter.model.rotation.y = Math.PI / 2;
+      adapter.model.position.y -= 0.18;
+      glbHolder.add(adapter.model);
+      glbHolder.visible = true;
+      root.add(glbHolder);
     },
     teleportNear(x, y, z, landMode) {
       pos.set(x, y, z);
@@ -928,6 +944,10 @@ export function buildSwimmingCompanion(scene) {
         pawBL.rotation.z = -Math.sin(trotPhase) * legAmp;
         pawBR.rotation.z = Math.sin(trotPhase) * legAmp;
         tail.rotation.y = Math.sin(elapsedTime * (isMoving ? 12.0 : 8.5)) * 0.48;
+        if (dogGlb) {
+          dogGlb.playAction(isMoving ? 'Run' : 'Idle');
+          dogGlb.update(clampedDt);
+        }
         return;
       }
 
@@ -988,6 +1008,10 @@ export function buildSwimmingCompanion(scene) {
       pawBR.rotation.z = 0.75 + Math.sin(paddlePhase) * 0.55;
 
       tail.rotation.y = Math.sin(elapsedTime * 7.5) * 0.35;
+      if (dogGlb) {
+        dogGlb.playAction('Swim');
+        dogGlb.update(clampedDt);
+      }
 
       rippleTimer -= clampedDt;
       if (rippleTimer <= 0 && addRipple) {

@@ -4,6 +4,17 @@
 
 ---
 
+## [v0.7.1] - 2026-11-26（Blender `.glb` 零代码自动热替换加载器与 Codex 3D 精模任务书）
+- **Git 里程碑记号**：`v0.7.1-glb-hotswap`
+- **Blender `.glb` 热替换管线（`src/core/glbLoader.js`、`public/assets/models/manifest.json`）**：
+  - 接入 Three.js `GLTFLoader` + `AnimationMixer` 零 404 自动加载机制：Codex 导出角色/小狗/可推门室内房屋 `.glb` 后，只需把 `public/assets/models/manifest.json` 对应键改为 `true`，游戏刷新瞬间即自动替换程序白模，零改 `src/` 代码。
+  - **角色自动适配（`player.js`、`npcs.js`、`wildlife.js`）**：自动归一化身高与脚底贴地，绑定标准骨骼动画 Clip 名称，并兼容静态精模的柔和呼吸与移动动态。
+  - **房屋无缝室内自动绑定（`town.js`）**：自动解析 Blender 导出的 `Roof_Cutaway`（进屋屋顶与南前墙渐隐）、`Door_Hinge`（按 `E` 旋转开关门）与 `Anchor_Aquarium` / `Anchor_Bed` / `Anchor_Workbench` 空锚点，同时保留室内 3D 活鱼缸游动与局部 OBB 墙体碰撞。
+  - 同步支持 `fishIconsDelivered` 动态登记：Codex 补齐剩余 17 张水彩鱼卡后只需加入该数组即自动替换程序彩绘回退图。
+- **Codex Blender 专属任务书**：创建 [CODEX_BLENDER_3D_BRIEF.md](../art_pipeline/brief/CODEX_BLENDER_3D_BRIEF.md)，涵盖 5 位角色精模 + 3 栋无缝室内房屋的精确尺寸、分层节点与导出交付规范。
+
+---
+
 ## [v0.7.0] - 2026-11-26（场景穿模全面修复、25 种鱼全图鉴补全、上床睡觉动作、3 位小镇 NPC 与渔村商店）
 - **Git 里程碑记号**：`v0.7.0-npcs-shops-polish`
 - **灵感档案更新**：[USER_IDEAS.md](./USER_IDEAS.md) 新增「第四节：完整畜牧业系统（鸡/牛/羊/猪养殖 + 渔农牧厨四维联动）」。

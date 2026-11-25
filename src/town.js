@@ -1789,6 +1789,54 @@ export function buildLakesideTown(scene) {
       }
     },
 
+    /**
+     * Hot-swaps any enterable procedural cottage with Codex's sculpted Blender `.glb` interior!
+     * Automatically binds `Roof_Cutaway`, `Door_Hinge`, and interactive `Anchor_*` empties while
+     * keeping our live 3D swimming aquarium fish & exact OBB wall/doorway collisions intact!
+     */
+    attachBuildingGlb(buildingId, glbData) {
+      const b = enterableBuildings.find((item) => item.id === buildingId);
+      if (!b || !glbData || !glbData.model) return false;
+
+      // Hide procedural whitebox geometry while keeping interior lights & live 3D aquarium fish!
+      for (const child of b.group.children) {
+        if (child === b.aquarium?.group || child.isLight) continue;
+        child.visible = false;
+      }
+
+      b.group.add(glbData.model);
+      if (glbData.roofNode) {
+        b.roofCutawayGroup = glbData.roofNode;
+        b.cutawayMaterials = glbData.cutawayMaterials || [];
+      }
+      if (glbData.doorHinge) {
+        b.doorPivot = glbData.doorHinge;
+      }
+
+      // Snap interactive anchors to Blender empties when supplied!
+      b.group.updateMatrixWorld(true);
+      if (glbData.anchors?.aquarium) {
+        const aqPos = new THREE.Vector3();
+        glbData.anchors.aquarium.getWorldPosition(aqPos);
+        b.worldAnchors.aquarium = aqPos;
+        if (b.aquarium) {
+          b.aquarium.group.position.copy(glbData.anchors.aquarium.position);
+        }
+      }
+      if (glbData.anchors?.bed) {
+        const bedPos = new THREE.Vector3();
+        glbData.anchors.bed.getWorldPosition(bedPos);
+        b.worldAnchors.bed = bedPos;
+        b.worldAnchors.bedLie = bedPos.clone();
+      }
+      if (glbData.anchors?.workbench) {
+        const wbPos = new THREE.Vector3();
+        glbData.anchors.workbench.getWorldPosition(wbPos);
+        b.worldAnchors.workbench = wbPos;
+      }
+      return true;
+    },
+
     update(dt, elapsedTime, nightGlow = 0.25, walkerPos = null) {
       windowMat.emissiveIntensity = 0.3 + nightGlow * 1.45;
       lanternGlassMat.emissiveIntensity = 1.0 + nightGlow * 1.8;

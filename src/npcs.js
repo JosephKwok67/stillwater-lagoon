@@ -264,11 +264,18 @@ export function buildTownNpcs(scene, town) {
     npcs.push({
       ...s,
       rig,
+      glbAdapter: null,
       yaw: s.homeYaw,
       talking: false,
       phase: npcs.length * 2.1,
       setTalking(v) {
         this.talking = Boolean(v);
+      },
+      attachGlb(adapter) {
+        if (!adapter || !adapter.model) return;
+        this.glbAdapter = adapter;
+        this.rig.bodyRoot.visible = false;
+        this.rig.root.add(adapter.model);
       },
     });
   }
@@ -278,6 +285,10 @@ export function buildTownNpcs(scene, town) {
     npcColliders,
     getById(id) {
       return npcs.find((n) => n.id === id) || null;
+    },
+    attachNpcGlb(npcId, adapter) {
+      const npc = npcs.find((n) => n.id === npcId);
+      if (npc) npc.attachGlb(adapter);
     },
     update(dt, elapsedTime, actorPos) {
       const clampedDt = Math.min(dt, 0.05);
@@ -294,6 +305,16 @@ export function buildTownNpcs(scene, town) {
         while (diff < -Math.PI) diff += Math.PI * 2;
         n.yaw += diff * clamp(clampedDt * 6.0, 0, 1);
         n.rig.root.rotation.y = n.yaw;
+
+        if (n.glbAdapter) {
+          n.glbAdapter.playAction(n.talking ? 'Talk' : near ? 'Wave' : 'Idle');
+          n.glbAdapter.update(clampedDt);
+          // Subtle liveliness even if Blender model starts as a static sculpt before rigging!
+          if (!n.glbAdapter.hasAnimations) {
+            n.glbAdapter.model.position.y = Math.sin(elapsedTime * 2.4 + n.phase) * 0.014;
+          }
+          continue;
+        }
 
         // Lively breathing, talking nod, and friendly welcoming wave!
         const breathe = Math.sin(elapsedTime * 2.2 + n.phase);

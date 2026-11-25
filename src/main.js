@@ -20,10 +20,13 @@ import {
   ROD_CATALOG,
   BAIT_CATALOG,
   PORTRAITS,
+  MODEL_PATHS,
+  syncDeliveredFishIcons,
   getFishIconUrl,
   getRodSpec,
   getBaitSpec,
 } from './core/assetRegistry.js';
+import { fetchAssetManifest, loadCharacterGlb, loadBuildingGlb } from './core/glbLoader.js';
 
 // ---------------------------------------------------------------------------
 // 1. Core Foundation Systems
@@ -128,6 +131,52 @@ if (gameState.data.playerMode === 'walking') {
 
 const allWaterColliders = [...environment.isletColliders, ...town.townColliders];
 water.addRipple({ x: -1.65, z: -1.45, dirX: -0.9, dirZ: 0.42, mode: 1, radiusScale: 0.34, intensity: 0.55 });
+
+// Async zero-404 hot-swap for Codex's Blender .glb characters, dog, seamless walk-in buildings & new fish PNGs!
+fetchAssetManifest().then(async (manifest) => {
+  if (!manifest) return;
+
+  if (Array.isArray(manifest.fishIconsDelivered)) {
+    syncDeliveredFishIcons(manifest.fishIconsDelivered);
+    // Refresh any rendered fish thumbnails in the guide drawer automatically
+    document.querySelectorAll('.species-item').forEach((el) => {
+      const id = el.dataset.speciesId;
+      const sp = specMap.get(id);
+      const img = el.querySelector('img.species-thumb');
+      if (sp && img) {
+        img.src = getFishIconUrl(id, sp) || img.src;
+      }
+    });
+  }
+
+  const charFlags = manifest.characters || {};
+  if (charFlags.player) {
+    loadCharacterGlb(MODEL_PATHS.characters.player, { targetHeight: 1.24 })
+      .then((adapter) => playerAvatar.attachGlb(adapter))
+      .catch((err) => console.warn('[GLB] player.glb load failed:', err));
+  }
+  if (charFlags.dog) {
+    loadCharacterGlb(MODEL_PATHS.characters.dog, { targetHeight: 0.65, isQuadruped: true })
+      .then((adapter) => companion.attachGlb(adapter))
+      .catch((err) => console.warn('[GLB] dog.glb load failed:', err));
+  }
+  for (const npcId of ['npc_market', 'npc_artisan', 'npc_lighthouse']) {
+    if (charFlags[npcId]) {
+      loadCharacterGlb(MODEL_PATHS.characters[npcId], { targetHeight: 1.26 })
+        .then((adapter) => townNpcs.attachNpcGlb(npcId, adapter))
+        .catch((err) => console.warn(`[GLB] ${npcId}.glb load failed:`, err));
+    }
+  }
+
+  const bldFlags = manifest.buildings || {};
+  for (const bId of ['player_home', 'artisan_workshop', 'neighbor_east']) {
+    if (bldFlags[bId]) {
+      loadBuildingGlb(MODEL_PATHS.buildings[bId])
+        .then((data) => town.attachBuildingGlb(bId, data))
+        .catch((err) => console.warn(`[GLB] ${bId} load failed:`, err));
+    }
+  }
+});
 
 // ---------------------------------------------------------------------------
 // 4. Smart Camera Director

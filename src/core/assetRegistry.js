@@ -358,6 +358,15 @@ function buildPaintedFishFallback(spec) {
   return dataUrl;
 }
 
+export function syncDeliveredFishIcons(ids) {
+  if (!Array.isArray(ids)) return;
+  for (const id of ids) {
+    if (typeof id === 'string' && id) {
+      DELIVERED_FISH_ICONS.add(id);
+    }
+  }
+}
+
 export function getFishIconUrl(speciesId, spec = null) {
   if (DELIVERED_FISH_ICONS.has(speciesId)) {
     return `/assets/icons/fish/${speciesId}.png`;

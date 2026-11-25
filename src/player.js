@@ -246,7 +246,21 @@ export function createPlayerAvatar() {
   let walkCycle = 0;
   let interactTimer = 0;
   let currentAction = 'Idle';
+  let glbAdapter = null;
+  const glbWrap = new THREE.Group();
+  root.add(glbWrap);
   const tipWorld = new THREE.Vector3();
+
+  function attachGlb(adapter) {
+    if (!adapter || !adapter.model) return;
+    glbAdapter = adapter;
+    bodyRoot.visible = false;
+    glbWrap.clear();
+    glbWrap.add(adapter.model);
+    // Keep hand-held fishing rod visible beside character when fishing if GLB has no built-in rod
+    rodGroup.position.set(0.24, 0.72, 0.14);
+    glbWrap.add(rodGroup);
+  }
 
   function setRodStyle(rodId) {
     rodMat.color.setHex(ROD_COLORS[rodId] || ROD_COLORS.rod_bamboo);
@@ -258,10 +272,33 @@ export function createPlayerAvatar() {
 
   /**
    * Drives the character rig for any action in the Action Pack.
+   * Automatically routes to Blender AnimationMixer when `player.glb` is attached!
    */
   function updateAnimation(action, dt, elapsedTime, params = {}) {
     currentAction = action;
     const clampedDt = Math.min(dt, 0.05);
+
+    if (glbAdapter) {
+      glbAdapter.playAction(action);
+      glbAdapter.update(clampedDt);
+
+      // Gentle procedural root polish for non-baked poses (bed sleep, walk bounce, boat seat)
+      const isSleep = action === 'Sleep_Bed';
+      const isMove = action === 'Walk' || action === 'Run';
+      const isFish = action.startsWith('Fish_');
+      const k = clamp(clampedDt * 12.0, 0, 1);
+      glbWrap.rotation.x = THREE.MathUtils.lerp(glbWrap.rotation.x, isSleep ? Math.PI * 0.5 : 0, k);
+      const bounce = !glbAdapter.hasAnimations && isMove ? Math.abs(Math.sin(elapsedTime * 10.0)) * 0.045 : 0;
+      const seatOff = action === 'Sit_Row' ? -0.14 : 0;
+      glbWrap.position.y = THREE.MathUtils.lerp(glbWrap.position.y, bounce + seatOff, k);
+      rodGroup.visible = isFish;
+      if (isFish) {
+        const pitch = action === 'Fish_Aim' ? -0.65 : action === 'Fish_Reel' ? -0.45 : -0.18;
+        rodGroup.rotation.x = THREE.MathUtils.lerp(rodGroup.rotation.x, pitch, k);
+      }
+      return;
+    }
+
     const k = clamp(clampedDt * 12.0, 0, 1);
 
     interactTimer = Math.max(0, interactTimer - clampedDt);
@@ -466,6 +503,7 @@ export function createPlayerAvatar() {
     get currentAction() {
       return currentAction;
     },
+    attachGlb,
     setRodStyle,
     triggerInteractPulse,
     updateAnimation,

@@ -1,0 +1,25 @@
+{
+  "note": "Codex 导出对应 .glb 到 public/assets/models/ 后，将下方对应键改为 true，游戏刷新页面即会自动无缝替换程序白模，无需修改 src/ 代码！",
+  "characters": {
+    "player": false,
+    "dog": false,
+    "npc_market": false,
+    "npc_artisan": false,
+    "npc_lighthouse": false
+  },
+  "buildings": {
+    "player_home": false,
+    "artisan_workshop": false,
+    "neighbor_east": false
+  },
+  "fishIconsDelivered": [
+    "stillwater_koi",
+    "yellowfin_tuna",
+    "red_sea_bream",
+    "seabass",
+    "blue_diamond_discus",
+    "cutlassfish",
+    "bigfin_reef_squid",
+    "red_bee_shrimp"
+  ]
+}
