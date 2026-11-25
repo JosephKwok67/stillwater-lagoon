@@ -183,6 +183,11 @@ export function buildAquaticEcosystem(scene) {
         spookCooldown: 0,
         spookDirX: 1,
         spookDirZ: 0,
+        // Real fishing interaction state!
+        hookState: 'free', // 'free' | 'approaching' | 'nibbling' | 'hooked'
+        hookTargetX: 0,
+        hookTargetY: -0.25,
+        hookTargetZ: 0,
       });
     }
 
@@ -225,6 +230,7 @@ export function buildAquaticEcosystem(scene) {
       let bestDist = maxRadius;
       for (const rt of speciesRuntimes) {
         for (const agent of rt.agents) {
+          if (agent.hookState !== 'free') continue;
           const d = Math.hypot(agent.pos.x - x, agent.pos.z - z);
           if (d < bestDist) {
             bestDist = d;
@@ -233,6 +239,107 @@ export function buildAquaticEcosystem(scene) {
         }
       }
       return best;
+    },
+
+    /**
+     * Selects a real underwater fish near the bobber (preferring bait affinity!)
+     * and switches it into 'approaching' mode so the player literally sees it swim to the hook!
+     */
+    attractFishToBobber(x, z, baitId = 'bait_dough') {
+      const baitMatchBonus = (spec) => {
+        if (baitId === 'bait_dough') {
+          return spec.category === '彩绘淡水鱼' || spec.category === '群游鱼类' ? 2.6 : 0;
+        }
+        if (baitId === 'bait_shrimp') {
+          return spec.category === '礁石鱼类' || spec.category === '底栖生物' || spec.category === '头足与虾类' ? 2.8 : 0;
+        }
+        if (baitId === 'bait_lure') {
+          return spec.category === '大型远洋鱼' || spec.category === '奇特鱼类' ? 3.2 : 0;
+        }
+        if (baitId === 'bait_glow') {
+          return spec.category === '奇特鱼类' || spec.category === '头足与虾类' || spec.baseScale > 1.5 ? 3.2 : 0;
+        }
+        return 0;
+      };
+
+      let best = null;
+      let bestScore = Infinity;
+
+      for (const rt of speciesRuntimes) {
+        const bonus = baitMatchBonus(rt.spec);
+        for (const agent of rt.agents) {
+          if (agent.hookState !== 'free') continue;
+          const d = Math.hypot(agent.pos.x - x, agent.pos.z - z);
+          if (d > 18.0) continue;
+          const score = d - bonus + (agent.spookTimer > 0.2 ? 4.0 : 0);
+          if (score < bestScore) {
+            bestScore = score;
+            best = { spec: rt.spec, agent, dist: d };
+          }
+        }
+      }
+
+      if (!best) return null;
+
+      best.agent.hookState = 'approaching';
+      best.agent.hookTargetX = x;
+      best.agent.hookTargetY = -0.26;
+      best.agent.hookTargetZ = z;
+      best.agent.spookTimer = 0;
+      return best;
+    },
+
+    /**
+     * Updates a hooked/approaching fish's live target or releases/respawns it after catch!
+     */
+    setFishHookState(agent, state, targetPos = null) {
+      if (!agent) return;
+      agent.hookState = state;
+      if (targetPos) {
+        agent.hookTargetX = targetPos.x;
+        agent.hookTargetY = targetPos.y ?? -0.22;
+        agent.hookTargetZ = targetPos.z;
+      }
+      if (state === 'free') {
+        // Bolt slightly away when released/missed
+        agent.spookTimer = 1.4;
+        const a = Math.random() * Math.PI * 2;
+        agent.spookDirX = Math.cos(a);
+        agent.spookDirZ = Math.sin(a);
+      }
+    },
+
+    respawnCaughtFish(agent, spec) {
+      if (!agent || !spec) return;
+      agent.hookState = 'free';
+      agent.spookTimer = 0;
+      const z = agent.zone;
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const a = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * z.r;
+        const cx = z.cx + Math.cos(a) * r;
+        const cz = z.cz + Math.sin(a) * r;
+        const elev = getWorldElevation(cx, cz);
+        if (elev < -0.65) {
+          agent.pos.set(cx, clamp(agent.targetDepth, elev + 0.24, -0.3), cz);
+          break;
+        }
+      }
+      // Roll a fresh size for the newly spawned lagoon replacement
+      const roll = Math.random();
+      let sizeVar = 0.78 + Math.random() * 0.36;
+      let grade = '普通';
+      if (roll > 0.94) {
+        sizeVar = 1.38 + Math.random() * 0.18;
+        grade = '王冠';
+      } else if (roll > 0.74) {
+        sizeVar = 1.15 + Math.random() * 0.22;
+        grade = '大物';
+      }
+      agent.sizeRatio = sizeVar;
+      agent.scale = spec.baseScale * sizeVar;
+      agent.lengthCm = Math.max(3, Math.round(Math.max(4, Math.round(spec.baseScale * 36)) * sizeVar));
+      agent.grade = grade;
     },
 
     update(dt, elapsedTime, boatState, colliders, addRipple) {
@@ -266,6 +373,7 @@ export function buildAquaticEcosystem(scene) {
 
           for (let i = 0; i < agents.length; i++) {
             const f = agents[i];
+            if (f.hookState !== 'free') continue;
             f.spookTimer = Math.max(0, f.spookTimer - clampedDt);
             f.spookCooldown = Math.max(0, f.spookCooldown - clampedDt);
 
@@ -344,6 +452,72 @@ export function buildAquaticEcosystem(scene) {
         // -------------------------------------------------------------------
         for (let i = 0; i < agents.length; i++) {
           const f = agents[i];
+
+          // Special live-fishing overrides: approaching / nibbling / hooked fighting fish!
+          if (f.hookState === 'approaching' || f.hookState === 'nibbling') {
+            const dx = f.hookTargetX - f.pos.x;
+            const dz = f.hookTargetZ - f.pos.z;
+            const d = Math.hypot(dx, dz);
+            const approachSpd = f.hookState === 'nibbling' ? 0.65 : Math.max(2.0, f.baseSpeed * 2.8);
+
+            if (d > 0.14) {
+              f.vel.x = THREE.MathUtils.lerp(f.vel.x, (dx / d) * approachSpd, clamp(clampedDt * 6.0, 0, 1));
+              f.vel.z = THREE.MathUtils.lerp(f.vel.z, (dz / d) * approachSpd, clamp(clampedDt * 6.0, 0, 1));
+              f.pos.x += f.vel.x * clampedDt;
+              f.pos.z += f.vel.z * clampedDt;
+            } else {
+              // Gentle nibble circle right below the bobber!
+              const orbA = elapsedTime * 3.8 + f.phase;
+              f.pos.x = THREE.MathUtils.lerp(f.pos.x, f.hookTargetX + Math.cos(orbA) * 0.22, clamp(clampedDt * 6, 0, 1));
+              f.pos.z = THREE.MathUtils.lerp(f.pos.z, f.hookTargetZ + Math.sin(orbA) * 0.22, clamp(clampedDt * 6, 0, 1));
+            }
+            const targetY = f.hookState === 'nibbling' ? -0.2 : -0.34;
+            f.pos.y = THREE.MathUtils.lerp(f.pos.y, targetY, clamp(clampedDt * 5.0, 0, 1));
+
+            const desiredYaw = d > 0.1 ? Math.atan2(-dz, dx) : f.yaw + clampedDt * 2.4;
+            let diff = desiredYaw - f.yaw;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            f.yaw += diff * clamp(clampedDt * 9.0, 0, 1);
+            f.roll = THREE.MathUtils.lerp(f.roll, 0, clampedDt * 6);
+            f.pitch = THREE.MathUtils.lerp(f.pitch, 0.12, clampedDt * 5);
+
+            dummy.position.copy(f.pos);
+            dummy.rotation.set(f.roll, f.yaw, f.pitch, 'YXZ');
+            dummy.scale.setScalar(f.scale);
+            dummy.updateMatrix();
+            inst.setMatrixAt(i, dummy.matrix);
+            continue;
+          }
+
+          if (f.hookState === 'hooked') {
+            // Live thrashing fish fighting directly at the hook line position!
+            const prevX = f.pos.x;
+            const prevZ = f.pos.z;
+            f.pos.x = THREE.MathUtils.lerp(f.pos.x, f.hookTargetX, clamp(clampedDt * 12.0, 0, 1));
+            f.pos.y = THREE.MathUtils.lerp(f.pos.y, f.hookTargetY, clamp(clampedDt * 12.0, 0, 1));
+            f.pos.z = THREE.MathUtils.lerp(f.pos.z, f.hookTargetZ, clamp(clampedDt * 12.0, 0, 1));
+
+            const mvX = f.pos.x - prevX;
+            const mvZ = f.pos.z - prevZ;
+            if (Math.hypot(mvX, mvZ) > 0.002) {
+              const desiredYaw = Math.atan2(-mvZ, mvX);
+              let diff = desiredYaw - f.yaw;
+              while (diff > Math.PI) diff -= Math.PI * 2;
+              while (diff < -Math.PI) diff += Math.PI * 2;
+              f.yaw += diff * clamp(clampedDt * 14.0, 0, 1);
+            }
+            f.roll = Math.sin(elapsedTime * 19.0) * 0.42;
+            f.pitch = Math.sin(elapsedTime * 14.0) * 0.24;
+
+            dummy.position.copy(f.pos);
+            dummy.rotation.set(f.roll, f.yaw, f.pitch, 'YXZ');
+            dummy.scale.setScalar(f.scale);
+            dummy.updateMatrix();
+            inst.setMatrixAt(i, dummy.matrix);
+            continue;
+          }
+
           const isSpooked = f.spookTimer > 0.01;
           const spookIntensity = clamp(f.spookTimer / 1.4, 0, 1);
 

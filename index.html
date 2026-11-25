@@ -28,10 +28,10 @@
                 <img src="/assets/icons/ui/echo_leaf.png" alt="回响" />
                 <b id="hud-echo">0</b>
               </span>
-              <span class="res-chip" title="随身鱼护">
+              <button id="btn-open-basket" class="res-chip res-chip-btn" title="打开随身鱼护（快捷键 B）">
                 <img src="/assets/icons/ui/basket.png" alt="鱼护" />
                 <b id="hud-basket">0</b>
-              </span>
+              </button>
             </div>
           </div>
         </div>
@@ -51,25 +51,83 @@
         <span id="interact-text" class="interact-text">交互</span>
       </div>
 
+      <!-- World-anchored floating BITE ALERT right above the plunging bobber! -->
+      <button id="bite-alert" class="bite-alert hidden" type="button">
+        <span class="bite-bang">!</span>
+        <span>咬钩了！按 Space / 点击提竿</span>
+      </button>
+
       <!-- Cozy storybook toast notification with Codex portrait -->
       <div id="toast-banner" class="toast-banner hidden">
         <img id="toast-portrait" class="toast-portrait" src="/assets/portraits/player/neutral.png" alt="" />
         <span id="toast-msg" class="toast-msg"></span>
       </div>
 
-      <!-- Bottom-center compact gear & action dock (uses Codex rods/baits/bobber icons) -->
+      <!-- Reeling Tension & Progress Mini-Game HUD (appears during live fish fight!) -->
+      <div id="fishing-reel-hud" class="fishing-reel-hud hidden">
+        <div class="reel-header">
+          <span id="reel-fish-label" class="reel-fish-label">遛鱼中...</span>
+          <span id="reel-mood-pill" class="reel-mood-pill mood-tired">游累了 · 按住收线！</span>
+        </div>
+        <div class="reel-bar-row">
+          <span class="reel-bar-label">上鱼进度</span>
+          <div class="reel-track">
+            <div id="reel-progress-fill" class="reel-fill progress-fill" style="width: 24%"></div>
+          </div>
+          <span id="reel-progress-pct" class="reel-pct">24%</span>
+        </div>
+        <div class="reel-bar-row">
+          <span class="reel-bar-label">鱼线张力</span>
+          <div class="reel-track">
+            <div id="reel-tension-fill" class="reel-fill tension-fill" style="width: 20%"></div>
+          </div>
+          <span id="reel-tension-pct" class="reel-pct">20%</span>
+        </div>
+        <div class="reel-actions">
+          <button id="btn-reel-hold" class="reel-hold-btn" type="button">按住收线（Space / 鼠标）</button>
+          <span class="reel-hint">挣扎变红时松手卸力 · Esc 放线</span>
+        </div>
+      </div>
+
+      <!-- Catch Settlement Card Modal (Choose Keep in Basket vs Release for Echo!) -->
+      <div id="catch-modal" class="catch-modal-backdrop hidden">
+        <div class="catch-card">
+          <div class="catch-card-top">
+            <div id="catch-badges" class="catch-badges"></div>
+            <img class="catch-dog-cheer" src="/assets/portraits/dog/excited.png" alt="小狗欢呼" />
+          </div>
+          <div class="catch-visual">
+            <img id="catch-fish-img" class="catch-fish-img hidden" src="" alt="" />
+            <div id="catch-fish-fallback" class="catch-fish-fallback hidden"></div>
+          </div>
+          <div id="catch-fish-name" class="catch-fish-name">静水锦鲤</div>
+          <div id="catch-fish-meta" class="catch-fish-meta">体长 42 cm · 普通 · 约 95 贝币</div>
+          <div class="catch-actions">
+            <button id="btn-catch-keep" class="catch-btn catch-btn-primary" type="button">
+              <img src="/assets/icons/ui/basket.png" alt="" />
+              <span>收入随身鱼护 <em>1 / Enter</em></span>
+            </button>
+            <button id="btn-catch-release" class="catch-btn catch-btn-secondary" type="button">
+              <img src="/assets/icons/ui/echo_leaf.png" alt="" />
+              <span id="catch-release-label">温柔放生 (+10) <em>2</em></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom-center compact gear & action dock -->
       <div class="hud-bottom-dock">
-        <button id="btn-cycle-rod" class="gear-btn" title="点击切换鱼竿预览">
+        <button id="btn-cycle-rod" class="gear-btn" title="点击切换鱼竿">
           <img id="btn-rod-img" src="/assets/icons/rods/rod_bamboo.png" alt="鱼竿" />
           <span id="btn-rod-name">初始竹竿</span>
         </button>
-        <button id="btn-cycle-bait" class="gear-btn" title="点击切换鱼饵预览">
+        <button id="btn-cycle-bait" class="gear-btn" title="点击切换鱼饵">
           <img id="btn-bait-img" src="/assets/icons/baits/bait_dough.png" alt="鱼饵" />
           <span id="btn-bait-name">面团香饵</span>
         </button>
-        <button id="btn-cast-action" class="gear-btn gear-btn-accent" title="在船上或栈桥边按 Space / F 甩竿试手">
+        <button id="btn-cast-action" class="gear-btn gear-btn-accent" title="按住蓄力松开抛竿，咬钩后按住收线">
           <img src="/assets/icons/ui/bobber.png" alt="浮标" />
-          <span>甩竿 / 收竿 <em>Space</em></span>
+          <span id="btn-cast-label">蓄力抛竿 <em>Space</em></span>
         </button>
         <button id="btn-warp-home" class="gear-btn gear-btn-subtle" title="一键回到自家小屋码头">
           <span>回自家码头</span>
@@ -79,17 +137,31 @@
       <!-- Subtle bottom-left control legend -->
       <div class="title-overlay">
         <div class="title-main">钓鱼大冒险 · 静水</div>
-        <div class="title-sub">WASD 划船/行走 · Shift 小跑 · E 上下船/开关门/互动 · Space 甩竿</div>
+        <div class="title-sub">WASD 划船/行走 · Space 蓄力抛竿/遛鱼 · E 上下船/开关门/鱼缸 · B 鱼护</div>
       </div>
 
-      <!-- Home Indoor Aquarium Close-up Inspection Overlay -->
+      <!-- Portable Fish Basket Drawer -->
+      <aside id="basket-modal" class="tweak-panel aquarium-modal hidden">
+        <div class="panel-header">
+          <span>随身鱼护 <em id="basket-count-badge" class="badge-count"></em></span>
+          <button id="btn-close-basket" class="icon-close" aria-label="关闭">×</button>
+        </div>
+        <div class="fish-guide-tip">钓到的活鱼都暂存在这里，回自家红顶小屋靠近鱼缸按 E 就能放进缸里饲养观赏！</div>
+        <div id="basket-fish-list" class="aq-fish-list"></div>
+      </aside>
+
+      <!-- Home Indoor Aquarium Close-up Inspection & Transfer Overlay -->
       <aside id="aquarium-modal" class="tweak-panel aquarium-modal hidden">
         <div class="panel-header">
-          <span>家里的大生态鱼缸</span>
+          <span>家里的大生态鱼缸 <em id="aq-cap-badge" class="badge-count"></em></span>
           <button id="btn-close-aquarium" class="icon-close" aria-label="关闭">×</button>
         </div>
-        <div class="fish-guide-tip">每一条带回家的鱼都会按真实体型在这里自由游动（按 Esc 或 × 返回屋内）</div>
+        <div class="fish-guide-tip">缸内活鱼按真实捕获体长 3D 自由游动，可随时从鱼护放入或捞出（Esc 返回）</div>
+        <div class="section-label">缸内饲养中</div>
         <div id="aquarium-fish-list" class="aq-fish-list"></div>
+        <div class="panel-divider"></div>
+        <div class="section-label">从随身鱼护放入鱼缸</div>
+        <div id="aquarium-basket-list" class="aq-fish-list aq-basket-list"></div>
       </aside>
 
       <!-- Collapsible Fish Species Observer Drawer -->

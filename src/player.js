@@ -342,6 +342,7 @@ export function createPlayerAvatar() {
       action === 'Fish_Aim' ||
       action === 'Fish_Cast' ||
       action === 'Fish_Idle' ||
+      action === 'Fish_Bite' ||
       action === 'Fish_Reel' ||
       action === 'Fish_Catch'
     ) {
@@ -377,12 +378,19 @@ export function createPlayerAvatar() {
         armRZ = -0.1;
         armLZ = 0.22;
         rodPitch = -0.22 + sway * 0.6;
+      } else if (action === 'Fish_Bite') {
+        const jolt = Math.sin(elapsedTime * 22.0) * 0.14;
+        targetTorsoX = -0.1;
+        armRX = -0.95 + jolt;
+        armLX = -0.75;
+        rodPitch = -0.05 + jolt;
       } else if (action === 'Fish_Reel') {
-        const tug = Math.sin(elapsedTime * 11.0) * 0.16;
-        targetTorsoX = -0.22 + tug * 0.3;
-        armRX = -1.18 + tug;
-        armLX = -0.88 + Math.cos(elapsedTime * 12.0) * 0.18;
-        rodPitch = -0.55 + tug * 0.6;
+        const tension = clamp(params.tension ?? 0.35, 0, 1);
+        const tug = Math.sin(elapsedTime * (params.pulling ? 14.0 : 8.0)) * (0.08 + tension * 0.16);
+        targetTorsoX = -0.16 - tension * 0.22 + tug * 0.25;
+        armRX = -1.12 - tension * 0.28 + tug;
+        armLX = -0.88 + Math.cos(elapsedTime * 12.0) * (params.pulling ? 0.24 : 0.08);
+        rodPitch = -0.35 - tension * 0.28 + tug * 0.65;
       } else if (action === 'Fish_Catch') {
         targetBodyY = Math.abs(Math.sin(elapsedTime * 7.0)) * 0.05;
         armRX = -2.15;
