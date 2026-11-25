@@ -4,6 +4,28 @@
 
 ---
 
+## [v0.5.0 · 美术批次 02] - 2026-11-26（两位小镇居民、核心 UI 与八张鱼卡）
+
+- **画风基准**　第一批 19 项美术资产已获项目方全部通过。后续角色以阿莲的三视图和对话立绘校对比例、笔触与轮廓，物件与图鉴以第一批渔具图标校对透明边缘和 64 px 表现。
+- **居民 · 8 张**　`art_pipeline/concepts/npcs/` 下新增 `npc_artisan_turnaround.png` 与 `npc_lighthouse_turnaround.png`，均为纯白底正、侧、背三视图。`public/assets/portraits/npc_artisan/` 新增 `neutral.png`、`happy.png`、`thinking.png`，`public/assets/portraits/npc_lighthouse/` 新增 `neutral.png`、`happy.png`、`mysterious.png`。六张立绘均为 1024 × 1024 透明 PNG。
+- **核心 UI · 4 枚**　`public/assets/icons/ui/` 的 `coin.png` 为贝壳纹村币，`echo_leaf.png` 为嫩叶与两道水纹，`basket.png` 为带盖竹编鱼护，`bobber.png` 为红白浮标。每枚均为 512 × 512 透明 PNG。[居民与界面评审板](../art_pipeline/staging/batch02/review/居民与界面评审.jpg)
+- **水彩图鉴 · 8 张**　`public/assets/icons/fish/` 新增 `stillwater_koi.png`、`yellowfin_tuna.png`、`red_sea_bream.png`、`seabass.png`、`blue_diamond_discus.png`、`cutlassfish.png`、`bigfin_reef_squid.png`、`red_bee_shrimp.png`。全部采用 512 × 512 透明方图，完整侧面、头朝左，按 `src/fishCatalog.js` 中的 ID 引用。[八种鱼类拼图与 64 px 小样](../art_pipeline/staging/batch02/review/鱼类图鉴评审.jpg)
+- **交付验证**　已核对三视图纯白画布与头脚对齐、18 张运行时 PNG 的尺寸和透明通道、8 张鱼卡的朝向和留白。Vite 生产构建通过，18 张输出文件与源图的 SHA-256 全部一致。[本批生成提示词](../art_pipeline/staging/batch02/prompts/)
+- **下批衔接**　八张鱼卡待项目方评审。通过后继续余下 17 个物种和 Blender 角色建模。角色 BaseColor 烘焙采用均匀水粉手绘色与轻度 AO，方向性明暗交给 Three.js 实时太阳光。
+
+---
+
+## [v0.5.0 · 美术批次 01] - 2026-11-26（泻湖居民与渔具首轮评审）
+
+- **角色设定**　[五位核心角色美术设定简案](../art_pipeline/brief/五位核心角色美术设定简案.md)记录了草帽垂钓者、伴游小狗、阿莲、老周与海伯的服装、道具和表演方向。
+- **三视图 · 3 张**　`art_pipeline/concepts/characters/` 收录 `player_turnaround.png` 与 `dog_turnaround.png`，`art_pipeline/concepts/npcs/` 收录 `npc_market_turnaround.png`。三面从左到右依次为正面、侧面、背面。小狗采用四足对称站姿。
+- **对话立绘 · 8 张**　`public/assets/portraits/` 下的 `player/` 和 `npc_market/` 各含 `neutral.png`、`happy.png`、`surprised.png`，`dog/` 含 `happy.png`、`excited.png`。全部为 1024 × 1024 透明 PNG，程序可复用同一个正方形显示框切换表情。
+- **渔具图标 · 8 枚**　`public/assets/icons/rods/` 收录 `rod_bamboo`、`rod_maple`、`rod_ocean`、`rod_starlight`；`public/assets/icons/baits/` 收录 `bait_dough`、`bait_shrimp`、`bait_lure`、`bait_glow`。每项均以对应 ID 加 `.png` 命名，尺寸为 512 × 512。
+- **使用与验证**　Vite 静态地址从 `/assets/` 起算，例如 `/assets/portraits/dog/excited.png` 和 `/assets/icons/rods/rod_bamboo.png`。已核对透明通道、四角透明度、三视图白底，以及图标在 64 像素下的辨识度。独立目录生产构建通过，16 张运行时 PNG 与构建副本的 SHA-256 逐一相符。对话和背包界面的实际接入由程序端维护。
+- **画风评审**　[角色与表情](../art_pipeline/staging/batch01/review/角色评审.jpg)和[渔具与背包小样](../art_pipeline/staging/batch01/review/渔具评审.jpg)待项目方确认。老周、海伯、25 种鱼卡及 Blender 模型待本批评审后制作。记录的生成工具为内置 imagegen，界面未显示具体模型版本。[本批生成提示词](../art_pipeline/staging/batch01/prompts/)
+
+---
+
 ## [v0.5.0] - 2026-11-26（当前里程碑：场景与生态封版 + 美术协作工程化）
 - **Git 里程碑记号**：`v0.5.0-scene-milestone`
 - **水波流体物理重构**（`src/water.js`、`src/boat.js`）：
