@@ -156,7 +156,7 @@ export function createPlayerController({
     clearKeys,
     getActorWorldPos,
 
-    update(dt, elapsedTime, cameraYawDeg, inputLocked = false, fishingActive = false) {
+    update(dt, elapsedTime, cameraYawDeg, inputLocked = false, fishingActive = false, extraColliders = null) {
       const clampedDt = Math.min(dt, 0.05);
 
       if (transition.active) {
@@ -240,7 +240,7 @@ export function createPlayerController({
           walkerState.pos.z = tryZ;
         }
 
-        town.resolveLandCollisions(walkerState.pos, 0.27);
+        town.resolveLandCollisions(walkerState.pos, 0.27, extraColliders);
       }
 
       const targetY = town.getWalkableElevation(walkerState.pos.x, walkerState.pos.z);

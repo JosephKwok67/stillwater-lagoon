@@ -80,25 +80,25 @@ export function getWorldElevation(x, z) {
     elevation = elevation * (1.0 - penMask) + blended * penMask;
   }
 
-  // Softly flatten a clean terrace pad right under the Player's Own Waterside House & Sunny Garden Plot
-  const houseDist = Math.hypot((x - 2.6) / 5.4, (z + 20.8) / 3.8);
+  // Softly flatten a clean terrace pad right under the Player's Own Waterside House, Courtyard & Sunny Garden Plot
+  const houseDist = Math.hypot((x - 2.4) / 5.8, (z + 20.1) / 3.9);
   if (houseDist < 1.6) {
     const padWeight = 1.0 - smoothstep(0.68, 1.55, houseDist);
     elevation = elevation * (1.0 - padWeight) + 1.15 * padWeight;
   }
 
-  // Softly flatten a cozy central village square pad around Fish Market & Artisan Workshop (-4.8, -21.2)
-  const squareDist = Math.hypot((x + 5.0) / 5.6, (z + 21.4) / 4.2);
+  // Softly flatten a cozy central village square pad around Fish Market & Artisan Workshop (-5.2, -20.8)
+  const squareDist = Math.hypot((x + 5.2) / 5.8, (z + 20.8) / 4.3);
   if (squareDist < 1.6) {
     const padWeight = 1.0 - smoothstep(0.68, 1.55, squareDist);
-    elevation = elevation * (1.0 - padWeight) + 1.38 * padWeight;
+    elevation = elevation * (1.0 - padWeight) + 1.32 * padWeight;
   }
 
-  // Softly flatten east cottage terrace around (10.6, -21.0)
-  const eastHouseDist = Math.hypot((x - 10.6) / 3.4, (z + 21.0) / 3.0);
+  // Softly flatten east cottage terrace around (10.6, -20.6)
+  const eastHouseDist = Math.hypot((x - 10.6) / 3.6, (z + 20.6) / 3.2);
   if (eastHouseDist < 1.5) {
-    const padWeight = 1.0 - smoothstep(0.6, 1.45, eastHouseDist);
-    elevation = elevation * (1.0 - padWeight) + 1.28 * padWeight;
+    const padWeight = 1.0 - smoothstep(0.62, 1.45, eastHouseDist);
+    elevation = elevation * (1.0 - padWeight) + 1.24 * padWeight;
   }
 
   // Softly flatten a lighthouse plateau at (x = 17.2, z = -16.2)

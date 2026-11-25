@@ -835,7 +835,7 @@ export function buildSwimmingCompanion(scene) {
       const walkingMode = Boolean(landContext && landContext.walking);
 
       if (walkingMode) {
-        // ---- AMPHIBIOUS LAND FOLLOW MODE (Trots cheerfully beside player on piers, town & indoors!) ----
+        // ---- AMPHIBIOUS LAND FOLLOW MODE (Smart doorway routing & zero wall/door clipping!) ----
         onLand = true;
         const pPos = landContext.playerPos;
         const pYaw = landContext.playerYaw;
@@ -844,31 +844,65 @@ export function buildSwimmingCompanion(scene) {
         const sideX = Math.cos(pYaw);
         const sideZ = -Math.sin(pYaw);
 
-        const targetX = pPos.x + backX * 0.95 + sideX * 0.72;
-        const targetZ = pPos.z + backZ * 0.95 + sideZ * 0.72;
+        let targetX = pPos.x + backX * 0.98 + sideX * 0.68;
+        let targetZ = pPos.z + backZ * 0.98 + sideZ * 0.68;
+
+        // Smart doorway routing: prevent dog from rubbing against front walls or open door slabs!
+        if (landContext.town && landContext.town.enterableBuildings) {
+          for (const b of landContext.town.enterableBuildings) {
+            const playerIn = b.isPointInside(pPos.x, pPos.z, 0.04);
+            const dogIn = b.isPointInside(pos.x, pos.z, 0.04);
+            if (playerIn !== dogIn) {
+              const doorOutside = b.toWorld(b.dims.doorX + 0.12, 0, b.dims.depth * 0.5 + 0.78);
+              const doorInside = b.toWorld(b.dims.doorX + 0.12, 0, b.dims.depth * 0.5 - 0.62);
+              if (b.isDoorOpen && b.doorOpenAmount > 0.45) {
+                // Aim straight through the open doorway center before heading to player!
+                const goalPt = playerIn ? doorInside : doorOutside;
+                const dToDoor = Math.hypot(doorOutside.x - pos.x, doorOutside.z - pos.z);
+                if (playerIn && dToDoor > 0.55) {
+                  targetX = doorOutside.x;
+                  targetZ = doorOutside.z;
+                } else {
+                  targetX = goalPt.x;
+                  targetZ = goalPt.z;
+                }
+              } else if (playerIn) {
+                // Wait patiently right on the front porch when door is closed
+                targetX = doorOutside.x;
+                targetZ = doorOutside.z;
+              }
+              break;
+            }
+          }
+        }
 
         const dx = targetX - pos.x;
         const dz = targetZ - pos.z;
         const dist = Math.hypot(dx, dz);
 
         if (dist > 8.5) {
-          // Gently warp to pier/beside player if player hopped far onto land
           pos.x = targetX;
           pos.z = targetZ;
-        } else if (dist > 0.14) {
-          const speed = clamp(dist * 2.5, 0.9, 4.6);
+        } else if (dist > 0.16) {
+          const speed = clamp(dist * 2.5, 0.9, 4.4);
           const step = Math.min(dist, speed * clampedDt);
           const candX = pos.x + (dx / dist) * step;
           const candZ = pos.z + (dz / dist) * step;
           if (!landContext.town || landContext.town.isWalkableLand(candX, candZ)) {
             pos.x = candX;
             pos.z = candZ;
-            if (landContext.town) landContext.town.resolveLandCollisions(pos, 0.22);
+          } else if (landContext.town.isWalkableLand(candX, pos.z)) {
+            pos.x = candX;
+          } else if (landContext.town.isWalkableLand(pos.x, candZ)) {
+            pos.z = candZ;
           }
+          if (landContext.town) landContext.town.resolveLandCollisions(pos, 0.36);
+        } else if (landContext.town) {
+          landContext.town.resolveLandCollisions(pos, 0.36);
         }
 
         const groundY = landContext.town ? landContext.town.getWalkableElevation(pos.x, pos.z) : 0.5;
-        const isMoving = dist > 0.22;
+        const isMoving = dist > 0.24;
 
         const desiredYaw = isMoving ? Math.atan2(-dz, dx) : Math.atan2(-(pPos.z - pos.z), pPos.x - pos.x);
         let diff = desiredYaw - yaw;

@@ -5,6 +5,7 @@ import { createAtmosphereSystem, WEATHER_PRESETS } from './atmosphere.js';
 import { buildLagoonEnvironment } from './environment.js';
 import { buildLakesideTown } from './town.js';
 import { buildAquaticEcosystem, buildSwimmingCompanion } from './wildlife.js';
+import { buildTownNpcs } from './npcs.js';
 import { createPlayableBoat } from './boat.js';
 import { createLagoonWater } from './water.js';
 import { createPlayerAvatar } from './player.js';
@@ -13,6 +14,8 @@ import { createGameState } from './core/gameState.js';
 import { createInteractionSystem } from './core/interactionSystem.js';
 import { createPlayerController } from './core/playerController.js';
 import { createFishingSystem } from './core/fishingSystem.js';
+import { createVoiceBlip } from './core/voiceBlip.js';
+import { createDialogueSystem } from './core/dialogueSystem.js';
 import {
   ROD_CATALOG,
   BAIT_CATALOG,
@@ -28,6 +31,8 @@ import {
 const eventBus = createEventBus();
 const gameState = createGameState(eventBus);
 const interactionSystem = createInteractionSystem(eventBus);
+const voiceBlip = createVoiceBlip();
+const dialogueSystem = createDialogueSystem({ voiceBlip, eventBus });
 
 // ---------------------------------------------------------------------------
 // 2. Renderer & Scene Setup
@@ -56,11 +61,12 @@ const camera = new THREE.PerspectiveCamera(
 );
 
 // ---------------------------------------------------------------------------
-// 3. World, Enterable Town, Ecosystem, Avatar, Boat & Fishing System
+// 3. World, Enterable Town, 3 Town NPCs, Ecosystem, Avatar, Boat & Fishing
 // ---------------------------------------------------------------------------
 const atmosphere = createAtmosphereSystem(scene, renderer);
 const environment = buildLagoonEnvironment(scene);
 const town = buildLakesideTown(scene);
+const townNpcs = buildTownNpcs(scene, town);
 const ecosystem = buildAquaticEcosystem(scene);
 const companion = buildSwimmingCompanion(scene);
 
@@ -91,7 +97,8 @@ const fishingSystem = createFishingSystem({
   eventBus,
 });
 
-// Sync live 3D Home Aquarium fish whenever updated!
+const specMap = new Map(ecosystem.speciesCatalog.map((sp) => [sp.id, sp]));
+
 town.syncHomeAquarium(gameState.data.aquariumFish);
 eventBus.on('aquarium:updated', (list) => {
   town.syncHomeAquarium(list);
@@ -101,6 +108,7 @@ eventBus.on('aquarium:updated', (list) => {
 eventBus.on('inventory:updated', () => {
   renderAquariumModal();
   renderBasketModal();
+  if (shopState.open) renderShopContent();
 });
 
 atmosphere.applyPreset(gameState.data.weather);
@@ -127,6 +135,7 @@ water.addRipple({ x: -1.65, z: -1.45, dirX: -0.9, dirZ: 0.42, mode: 1, radiusSca
 const camState = {
   mode: gameState.data.playerMode === 'walking' ? 'walking' : 'boat',
   watchSpeciesId: null,
+  focusNpcId: null,
   target: new THREE.Vector3(-0.35, 0, 0.1),
   distance: 23.6,
   targetDistance: 23.6,
@@ -152,12 +161,12 @@ function updateCameraImmediate() {
   camera.lookAt(camState.target);
 }
 
-function setCameraMode(mode, speciesId = null) {
+function setCameraMode(mode, extraId = null) {
   camState.mode = mode;
-  camState.watchSpeciesId = speciesId;
-  highlightSelectedSpecies(speciesId);
+  camState.watchSpeciesId = mode === 'fish' ? extraId : null;
+  camState.focusNpcId = mode === 'dialogue' ? extraId : null;
+  highlightSelectedSpecies(camState.watchSpeciesId);
 
-  // Hide player hat only while inspecting close-up glass aquarium for 100% clear tank view!
   playerAvatar.root.visible = mode !== 'aquarium';
 
   if (mode === 'town') {
@@ -173,6 +182,10 @@ function setCameraMode(mode, speciesId = null) {
     camState.targetDistance = 2.35;
     camState.targetPitchDeg = 10;
     camState.targetYawDeg = 3;
+    if (btnTown) btnTown.textContent = '看岸边小镇';
+  } else if (mode === 'dialogue') {
+    camState.targetDistance = 9.4;
+    camState.targetPitchDeg = 36;
     if (btnTown) btnTown.textContent = '看岸边小镇';
   } else if (mode === 'indoor') {
     camState.targetDistance = 10.6;
@@ -191,8 +204,561 @@ function setCameraMode(mode, speciesId = null) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Register World Interactables
+// 5. Cozy Bed Sleeping Animation Sequence (Lie down -> Zzz -> Twilight Fade -> Wake!)
 // ---------------------------------------------------------------------------
+const WEATHER_CYCLE = ['morning', 'sunny', 'sunset', 'overcast'];
+const WEATHER_NAMES = {
+  morning: '清晨微光',
+  sunny: '晴朗午后',
+  sunset: '黄金日落',
+  overcast: '薄雾微阴',
+};
+
+const sleepZzzEl = document.getElementById('sleep-zzz');
+const sleepOverlayEl = document.getElementById('sleep-overlay');
+const sleepOverlayTextEl = document.getElementById('sleep-overlay-text');
+
+const sleepSeq = {
+  active: false,
+  elapsed: 0,
+  swappedWeather: false,
+  startPos: new THREE.Vector3(),
+  bedPos: new THREE.Vector3(),
+  wakePos: new THREE.Vector3(),
+  bedYaw: 0,
+  nextWeather: 'morning',
+  newDay: false,
+};
+
+function startCozyBedSleep() {
+  if (sleepSeq.active || !town.playerHome?.worldAnchors?.bedLie) return;
+  const curIdx = WEATHER_CYCLE.indexOf(gameState.data.weather);
+  const nextIdx = (curIdx + 1) % WEATHER_CYCLE.length;
+  sleepSeq.nextWeather = WEATHER_CYCLE[nextIdx];
+  sleepSeq.newDay = nextIdx === 0;
+  sleepSeq.active = true;
+  sleepSeq.elapsed = 0;
+  sleepSeq.swappedWeather = false;
+  sleepSeq.startPos.copy(playerController.walkerState.pos);
+  sleepSeq.bedPos.copy(town.playerHome.worldAnchors.bedLie);
+  sleepSeq.wakePos.copy(town.playerHome.worldAnchors.bedWake);
+  sleepSeq.bedYaw = town.playerHome.rotY;
+
+  playerController.clearKeys();
+  if (sleepOverlayTextEl) {
+    sleepOverlayTextEl.textContent = sleepSeq.newDay
+      ? `美美睡上一觉 · 静候第 ${gameState.data.day + 1} 天的${WEATHER_NAMES[sleepSeq.nextWeather]}...`
+      : `小憩片刻 · 窗外渐渐迎来「${WEATHER_NAMES[sleepSeq.nextWeather]}」...`;
+  }
+}
+
+const zzzProj = new THREE.Vector3();
+function updateBedSleepSequence(dt, elapsedTime) {
+  if (!sleepSeq.active) return false;
+  sleepSeq.elapsed += dt;
+  const t = sleepSeq.elapsed;
+
+  // Stage 1 (0.0 -> 0.45s): Hop smoothly onto the red-quilt wooden bed
+  if (t < 0.45) {
+    const p = clamp(t / 0.45, 0, 1);
+    const arc = Math.sin(p * Math.PI) * 0.42;
+    playerAvatar.root.position.set(
+      THREE.MathUtils.lerp(sleepSeq.startPos.x, sleepSeq.bedPos.x, p),
+      THREE.MathUtils.lerp(sleepSeq.startPos.y, sleepSeq.bedPos.y, p) + arc,
+      THREE.MathUtils.lerp(sleepSeq.startPos.z, sleepSeq.bedPos.z, p)
+    );
+    playerAvatar.root.rotation.y = sleepSeq.bedYaw;
+    playerAvatar.updateAnimation('Board_Boat', dt, elapsedTime, { progress: p });
+    return true;
+  }
+
+  // Stage 2 (0.45 -> 2.15s): Lie peacefully in bed with Sleep_Bed breathing, Zzz bubbles, and twilight fade!
+  if (t < 2.15) {
+    playerAvatar.root.position.copy(sleepSeq.bedPos);
+    playerAvatar.root.rotation.y = sleepSeq.bedYaw;
+    playerAvatar.updateAnimation('Sleep_Bed', dt, elapsedTime);
+
+    // Float Zzz bubbles right above the pillow!
+    if (sleepZzzEl) {
+      zzzProj.set(sleepSeq.bedPos.x, sleepSeq.bedPos.y + 0.62, sleepSeq.bedPos.z - 0.15);
+      zzzProj.project(camera);
+      const sx = (zzzProj.x * 0.5 + 0.5) * window.innerWidth;
+      const sy = (-zzzProj.y * 0.5 + 0.5) * window.innerHeight;
+      sleepZzzEl.style.left = `${sx.toFixed(1)}px`;
+      sleepZzzEl.style.top = `${sy.toFixed(1)}px`;
+      sleepZzzEl.classList.remove('hidden');
+    }
+
+    // Dreamy twilight curtain fade (0.85s -> 1.85s)
+    if (t >= 0.85 && t < 1.8) {
+      sleepOverlayEl?.classList.remove('hidden');
+      requestAnimationFrame(() => sleepOverlayEl?.classList.add('visible'));
+    }
+
+    // Apply weather/day switch smoothly right at the peak of the dreamy fade!
+    if (t >= 1.38 && !sleepSeq.swappedWeather) {
+      sleepSeq.swappedWeather = true;
+      atmosphere.applyPreset(sleepSeq.nextWeather);
+      syncWeatherUI(sleepSeq.nextWeather);
+      gameState.setWeather(sleepSeq.nextWeather, sleepSeq.newDay);
+    }
+
+    if (t >= 1.78) {
+      sleepOverlayEl?.classList.remove('visible');
+    }
+    return true;
+  }
+
+  // Stage 3 (2.15 -> 2.62s): Hop cheerfully out of bed onto the braided rug!
+  sleepZzzEl?.classList.add('hidden');
+  if (t < 2.62) {
+    const p = clamp((t - 2.15) / 0.47, 0, 1);
+    const arc = Math.sin(p * Math.PI) * 0.36;
+    playerAvatar.root.position.set(
+      THREE.MathUtils.lerp(sleepSeq.bedPos.x, sleepSeq.wakePos.x, p),
+      THREE.MathUtils.lerp(sleepSeq.bedPos.y, sleepSeq.wakePos.y, p) + arc,
+      THREE.MathUtils.lerp(sleepSeq.bedPos.z, sleepSeq.wakePos.z, p)
+    );
+    playerAvatar.root.rotation.y = sleepSeq.bedYaw + Math.PI * 0.35;
+    playerAvatar.updateAnimation('Board_Boat', dt, elapsedTime, { progress: p });
+    return true;
+  }
+
+  // Finished waking up cleanly!
+  sleepSeq.active = false;
+  sleepOverlayEl?.classList.add('hidden');
+  playerController.walkerState.pos.copy(sleepSeq.wakePos);
+  playerController.walkerState.yaw = sleepSeq.bedYaw + Math.PI * 0.35;
+  playerAvatar.root.position.copy(sleepSeq.wakePos);
+  showToast({
+    text: sleepSeq.newDay
+      ? `精神饱满！迎来了第 ${gameState.data.day} 天的${WEATHER_NAMES[sleepSeq.nextWeather]}，渔市高价鱼也刷新啦！`
+      : `小憩醒来，窗外已是「${WEATHER_NAMES[sleepSeq.nextWeather]}」时分`,
+    portrait: 'player',
+    mood: 'happy',
+  });
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// 6. Village Economy: Daily Hot Fish, Market Selling & Old Zhou Tackle Shop!
+// ---------------------------------------------------------------------------
+const shopModalEl = document.getElementById('shop-modal');
+const shopNpcPortraitEl = document.getElementById('shop-npc-portrait');
+const shopTitleEl = document.getElementById('shop-title');
+const shopSubtitleEl = document.getElementById('shop-subtitle');
+const shopCoinsEl = document.getElementById('shop-coins');
+const shopContentEl = document.getElementById('shop-content');
+const shopFooterEl = document.getElementById('shop-footer');
+
+const shopState = {
+  open: false,
+  mode: 'market', // 'market' | 'artisan'
+};
+
+function getDailyHotSpeciesIds() {
+  const day = gameState.data.day || 1;
+  const list = ecosystem.speciesCatalog;
+  const i1 = (day * 7 + 2) % list.length;
+  const i2 = (day * 13 + 9) % list.length;
+  return new Set([list[i1].id, list[i2 === i1 ? (i2 + 1) % list.length : i2].id]);
+}
+
+function getFishSellPrice(fishRec) {
+  const base = fishRec.price || 28;
+  const hot = getDailyHotSpeciesIds().has(fishRec.speciesId);
+  return hot ? Math.round(base * 1.5) : base;
+}
+
+function openShop(mode) {
+  shopState.open = true;
+  shopState.mode = mode;
+  shopModalEl?.classList.remove('hidden');
+  playerController.clearKeys();
+  renderShopContent();
+}
+
+function closeShop() {
+  if (!shopState.open) return;
+  shopState.open = false;
+  shopModalEl?.classList.add('hidden');
+}
+
+function renderShopContent() {
+  if (!shopContentEl || !shopFooterEl) return;
+  if (shopCoinsEl) shopCoinsEl.textContent = String(gameState.data.coins);
+  shopContentEl.innerHTML = '';
+  shopFooterEl.innerHTML = '';
+
+  if (shopState.mode === 'market') {
+    const hotIds = getDailyHotSpeciesIds();
+    const hotNames = Array.from(hotIds)
+      .map((id) => specMap.get(id)?.nameZh || id)
+      .join('、');
+
+    if (shopNpcPortraitEl) shopNpcPortraitEl.src = PORTRAITS.npc_market.happy;
+    if (shopTitleEl) shopTitleEl.textContent = '阿莲渔市收购摊';
+    if (shopSubtitleEl) shopSubtitleEl.textContent = `第 ${gameState.data.day} 天行情 · 高价鱼享受 1.5 倍溢价`;
+
+    const banner = document.createElement('div');
+    banner.className = 'shop-hot-banner';
+    banner.textContent = `🔥 今日高价收购鱼（1.5x）：${hotNames}`;
+    shopContentEl.appendChild(banner);
+
+    const fishes = gameState.data.inventory.filter((i) => i.kind === 'fish');
+    if (!fishes.length) {
+      const empty = document.createElement('div');
+      empty.className = 'shop-empty';
+      empty.textContent = '随身鱼护里暂时没有鱼哦！先去湖里甩几竿，钓到鱼再带给阿莲估价吧～';
+      shopContentEl.appendChild(empty);
+    } else {
+      let totalAll = 0;
+      for (const f of fishes) {
+        const sp = specMap.get(f.speciesId);
+        const isHot = hotIds.has(f.speciesId);
+        const salePrice = getFishSellPrice(f);
+        totalAll += salePrice;
+        const iconUrl = getFishIconUrl(f.speciesId, sp);
+
+        const row = document.createElement('div');
+        row.className = 'shop-row';
+        row.innerHTML = `
+          <img class="shop-item-img" src="${iconUrl || ''}" alt="${sp?.nameZh || ''}" />
+          <div class="shop-item-info">
+            <div class="shop-item-name">
+              ${sp?.nameZh || f.speciesId}
+              <span class="aq-grade">${f.grade || '普通'}</span>
+              ${isHot ? '<span class="shop-hot-tag">今日 1.5x</span>' : ''}
+            </div>
+            <div class="shop-item-desc">体长 ${f.lengthCm} cm · 收购价 ${salePrice} 贝币</div>
+          </div>
+        `;
+        const btn = document.createElement('button');
+        btn.className = 'shop-buy-btn sell';
+        btn.textContent = `卖出 +${salePrice}`;
+        btn.addEventListener('click', () => {
+          const res = gameState.sellFishFromInventory(f.uid, salePrice);
+          if (res) {
+            voiceBlip.playCoinChime();
+            showToast({
+              text: `阿莲收下了「${sp?.nameZh}」，入账 +${res.earned} 贝币！`,
+              portrait: 'npc_market',
+              mood: 'happy',
+            });
+            renderShopContent();
+          }
+        });
+        row.appendChild(btn);
+        shopContentEl.appendChild(row);
+      }
+
+      const summary = document.createElement('span');
+      summary.className = 'shop-item-desc';
+      summary.textContent = `共 ${fishes.length} 条渔获 · 合计可售 ${totalAll} 贝币`;
+      const btnAll = document.createElement('button');
+      btnAll.className = 'shop-buy-btn sell';
+      btnAll.textContent = `一键全部卖出 (+${totalAll} 贝币)`;
+      btnAll.addEventListener('click', () => {
+        const res = gameState.sellAllFishFromInventory(getFishSellPrice);
+        if (res.count > 0) {
+          voiceBlip.playCoinChime();
+          showToast({
+            text: `阿莲：「好丰收！共收下 ${res.count} 条新鲜渔获，给你 ${res.totalEarned} 贝币！」`,
+            portrait: 'npc_market',
+            mood: 'surprised',
+          });
+          renderShopContent();
+        }
+      });
+      shopFooterEl.append(summary, btnAll);
+    }
+  } else {
+    // Old Zhou's Tackle & Bait Workshop Shop!
+    if (shopNpcPortraitEl) shopNpcPortraitEl.src = PORTRAITS.npc_artisan.happy;
+    if (shopTitleEl) shopTitleEl.textContent = '老周渔具工坊商店';
+    if (shopSubtitleEl) shopSubtitleEl.textContent = '手工鱼竿与特制鱼饵，钓大鱼更得心应手';
+
+    const rodHeader = document.createElement('div');
+    rodHeader.className = 'shop-section-title';
+    rodHeader.textContent = '🎣 手工钓竿（购买后自动装备，底部可随时切换）';
+    shopContentEl.appendChild(rodHeader);
+
+    for (const rod of ROD_CATALOG) {
+      const owned = gameState.data.equipment.ownedRods.includes(rod.id);
+      const equipped = gameState.data.equipment.rodId === rod.id;
+      const row = document.createElement('div');
+      row.className = 'shop-row';
+      row.innerHTML = `
+        <img class="shop-item-img" src="${rod.icon}" alt="${rod.nameZh}" />
+        <div class="shop-item-info">
+          <div class="shop-item-name">${rod.nameZh}</div>
+          <div class="shop-item-desc">射程 ${rod.castRange}m · 拉力 ×${rod.power} · ${rod.desc}</div>
+        </div>
+      `;
+      const btn = document.createElement('button');
+      btn.className = `shop-buy-btn ${equipped ? 'equipped' : ''}`;
+      btn.textContent = equipped ? '已装备' : owned ? '装备' : `${rod.price} 贝币购买`;
+      btn.addEventListener('click', () => {
+        const res = gameState.buyRod(rod);
+        if (!res.ok) {
+          showToast({ text: res.reason, portrait: 'npc_artisan', mood: 'thinking' });
+          return;
+        }
+        playerAvatar.setRodStyle(rod.id);
+        voiceBlip.playCoinChime();
+        showToast({
+          text: res.equippedOnly
+            ? `已换上「${rod.nameZh}」！`
+            : `老周：「好眼光！这根「${rod.nameZh}」我已经帮你配好线轮装上了！」`,
+          portrait: 'npc_artisan',
+          mood: 'happy',
+        });
+        renderShopContent();
+      });
+      row.appendChild(btn);
+      shopContentEl.appendChild(row);
+    }
+
+    const baitHeader = document.createElement('div');
+    baitHeader.className = 'shop-section-title';
+    baitHeader.textContent = '🪱 特制鱼饵（每包 5 份，吸引对应水层鱼群）';
+    shopContentEl.appendChild(baitHeader);
+
+    for (const bait of BAIT_CATALOG) {
+      const curQty = gameState.data.equipment.baitCounts[bait.id] || 0;
+      const packPrice = bait.price * 5;
+      const row = document.createElement('div');
+      row.className = 'shop-row';
+      row.innerHTML = `
+        <img class="shop-item-img" src="${bait.icon}" alt="${bait.nameZh}" />
+        <div class="shop-item-info">
+          <div class="shop-item-name">${bait.nameZh} <span class="aq-grade">持有 ${curQty}</span></div>
+          <div class="shop-item-desc">吸引：${bait.targetHint}</div>
+        </div>
+      `;
+      const btn = document.createElement('button');
+      btn.className = 'shop-buy-btn';
+      btn.textContent = `${packPrice} 贝币 / 5份`;
+      btn.addEventListener('click', () => {
+        const res = gameState.buyBaitPack(bait, 5);
+        if (!res.ok) {
+          showToast({ text: res.reason, portrait: 'npc_artisan', mood: 'thinking' });
+          return;
+        }
+        voiceBlip.playCoinChime();
+        showToast({
+          text: `购买了 5 份「${bait.nameZh}」，已顺手装上鱼钩！`,
+          portrait: 'npc_artisan',
+          mood: 'happy',
+        });
+        renderShopContent();
+      });
+      row.appendChild(btn);
+      shopContentEl.appendChild(row);
+    }
+
+    const tip = document.createElement('span');
+    tip.className = 'shop-item-desc';
+    tip.textContent = '提示：赚够贝币升级远洋海钓竿，挑战东海黄鳍金枪鱼更轻松！';
+    shopFooterEl.appendChild(tip);
+  }
+}
+
+document.getElementById('btn-close-shop')?.addEventListener('click', closeShop);
+
+// ---------------------------------------------------------------------------
+// 7. NPC Dialogue Scripts (Subtitle + Dynamic Mood Portraits + Voice Blips!)
+// ---------------------------------------------------------------------------
+function startNpcConversation(npc) {
+  playerController.clearKeys();
+  npc.setTalking(true);
+  setCameraMode('dialogue', npc.id);
+
+  const restoreCamera = () => {
+    npc.setTalking(false);
+    if (!shopState.open) {
+      setCameraMode(gameState.data.insideBuildingId ? 'indoor' : 'walking');
+    }
+  };
+
+  if (npc.id === 'npc_market') {
+    const hotNames = Array.from(getDailyHotSpeciesIds())
+      .map((id) => specMap.get(id)?.nameZh || id)
+      .join('」和「');
+    const fishCount = gameState.data.inventory.filter((i) => i.kind === 'fish').length;
+
+    dialogueSystem.open(
+      {
+        speakerId: 'npc_market',
+        speakerName: '渔市老板娘 · 阿莲',
+        role: '渔获收购与鱼讯',
+        lines: [
+          {
+            mood: 'happy',
+            text:
+              fishCount > 0
+                ? `哟，小渔夫回来啦！看你鱼护沉甸甸的，今天装了 ${fishCount} 条新鲜渔获呢！`
+                : '早安呀小渔夫！今天泻湖水面亮堂堂的，正适合划着红木小船出去转转。',
+          },
+          {
+            mood: 'neutral',
+            text: `偷偷告诉你，今天镇上酒馆最抢手的是「${hotNames}」，钓到了拿来我这儿，直接按 1.5 倍高价收！`,
+          },
+        ],
+        choices: [
+          {
+            label: `🐟 出售鱼护里的渔获（${fishCount} 条）`,
+            primary: true,
+            onSelect: () => openShop('market'),
+          },
+          {
+            label: '💬 聊聊大房子和镇上近况',
+            onSelect: () => {
+              dialogueSystem.open(
+                {
+                  speakerId: 'npc_market',
+                  speakerName: '渔市老板娘 · 阿莲',
+                  role: '渔获收购与鱼讯',
+                  lines: [
+                    {
+                      mood: 'happy',
+                      text: '等你多攒些贝币，听说镇里以后还会开放更大的带厨房木屋呢！到时候自己煎条真鲷，想想都香～',
+                    },
+                    {
+                      mood: 'surprised',
+                      text: '对了，最稀有的王冠大鱼别急着全卖了，留几条放进自家屋里的大鱼缸养着，每天回家看一眼可治愈了！',
+                    },
+                  ],
+                },
+                restoreCamera
+              );
+            },
+          },
+          { label: '👋 一会儿再来', onSelect: () => {} },
+        ],
+      },
+      restoreCamera
+    );
+  } else if (npc.id === 'npc_artisan') {
+    dialogueSystem.open(
+      {
+        speakerId: 'npc_artisan',
+        speakerName: '渔具工匠 · 老周',
+        role: '鱼竿与鱼饵工坊',
+        lines: [
+          {
+            mood: 'neutral',
+            text: '嗯……欢迎来我这间小工坊。手里的竹竿用得还顺手吗？',
+          },
+          {
+            mood: 'thinking',
+            text: '浅滩小鱼用面团香饵和竹竿就够了；但要是想去东边灯塔外海拉黄鳍金枪鱼，最好换一根更柔韧的枫木竿或远洋海钓竿。',
+          },
+        ],
+        choices: [
+          {
+            label: '🎣 逛逛老周渔具商店（买竿 / 买饵）',
+            primary: true,
+            onSelect: () => openShop('artisan'),
+          },
+          {
+            label: '💬 请教不同鱼饵的秘密',
+            onSelect: () => {
+              dialogueSystem.open(
+                {
+                  speakerId: 'npc_artisan',
+                  speakerName: '渔具工匠 · 老周',
+                  role: '鱼竿与鱼饵工坊',
+                  lines: [
+                    {
+                      mood: 'happy',
+                      text: '面团香饵最讨静水锦鲤和宝莲灯喜欢；鲜甜虾仁专攻礁石边的真鲷、黑鲷和石狗公。',
+                    },
+                    {
+                      mood: 'neutral',
+                      text: '彩绘拟饵是远洋大鱼的克星，至于我手削的夜光木虾诱饵……黄昏日落时甩出去，银带鱼和软丝鱿鱼准会凑过来！',
+                    },
+                  ],
+                },
+                restoreCamera
+              );
+            },
+          },
+          { label: '👋 下次再来', onSelect: () => {} },
+        ],
+      },
+      restoreCamera
+    );
+  } else if (npc.id === 'npc_lighthouse') {
+    dialogueSystem.open(
+      {
+        speakerId: 'npc_lighthouse',
+        speakerName: '灯塔守望者 · 海伯',
+        role: '天气潮汐与巨物传说',
+        lines: [
+          {
+            mood: 'happy',
+            text: '哈哈，年轻人，海风把你吹到东海角灯塔来啦！这儿的浪花和远景最解乏。',
+          },
+          {
+            mood: 'mysterious',
+            text: '我在这灯塔守了三十年，见过比你那条小红船还长的黄鳍金枪鱼，就在灯塔东南外海的深蓝水沟里巡游……',
+          },
+        ],
+        choices: [
+          {
+            label: '🌅 请海伯观潮换个好时辰（切换天气）',
+            primary: true,
+            onSelect: () => {
+              const curIdx = WEATHER_CYCLE.indexOf(gameState.data.weather);
+              const nextWeather = WEATHER_CYCLE[(curIdx + 1) % WEATHER_CYCLE.length];
+              atmosphere.applyPreset(nextWeather);
+              syncWeatherUI(nextWeather);
+              gameState.setWeather(nextWeather, false);
+              showToast({
+                text: `海伯提灯望向海平线，天色渐渐转为了「${WEATHER_NAMES[nextWeather]}」`,
+                portrait: 'npc_lighthouse',
+                mood: 'happy',
+              });
+            },
+          },
+          {
+            label: '🌊 听听静水泻湖的巨物传说',
+            onSelect: () => {
+              dialogueSystem.open(
+                {
+                  speakerId: 'npc_lighthouse',
+                  speakerName: '灯塔守望者 · 海伯',
+                  role: '天气潮汐与巨物传说',
+                  lines: [
+                    {
+                      mood: 'mysterious',
+                      text: '划船经过浅滩时动作轻一点，猛划桨会把胆小的鱼群吓散；静静漂着靠近，才能钓到真正罕见的「王冠」体型！',
+                    },
+                    {
+                      mood: 'happy',
+                      text: '要是偶尔把钓上的鱼温柔放生，泻湖会记住你的善意——积攒下的放生回响灵气，迟早会带来意想不到的好运气。',
+                    },
+                  ],
+                },
+                restoreCamera
+              );
+            },
+          },
+          { label: '👋 谢谢海伯，我去钓鱼啦', onSelect: () => {} },
+        ],
+      },
+      restoreCamera
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Register World Interactables (Docks, Boat, Doors, Aquarium, Bed, NPCs, Farm)
+// ---------------------------------------------------------------------------
+const isBusyModalOrSeq = () =>
+  fishingSystem.isActive() || dialogueSystem.isOpen() || shopState.open || sleepSeq.active;
+
 for (const dock of town.docks) {
   interactionSystem.register({
     id: `disembark_${dock.id}`,
@@ -201,7 +767,7 @@ for (const dock of town.docks) {
     priority: 3,
     promptYOffset: 1.55,
     getPosition: () => dock.triggerPos,
-    canInteract: () => !fishingSystem.isActive(),
+    canInteract: () => !isBusyModalOrSeq(),
     getLabel: () => `停船上岸 · ${dock.nameZh}`,
     onInteract: () => {
       fishingSystem.cancel();
@@ -218,7 +784,7 @@ interactionSystem.register({
   priority: 3,
   promptYOffset: 1.15,
   getPosition: () => boat.state.pos,
-  canInteract: () => !gameState.data.insideBuildingId && !fishingSystem.isActive(),
+  canInteract: () => !gameState.data.insideBuildingId && !isBusyModalOrSeq(),
   getLabel: () => '登船出海',
   onInteract: () => {
     fishingSystem.cancel();
@@ -235,7 +801,7 @@ for (const b of town.enterableBuildings) {
     priority: 5,
     promptYOffset: 1.45,
     getPosition: () => b.doorWorldPos,
-    canInteract: () => !fishingSystem.isActive(),
+    canInteract: () => !isBusyModalOrSeq(),
     getLabel: () => (b.isDoorOpen ? `关上门 · ${b.nameZh}` : `推开门进入 · ${b.nameZh}`),
     onInteract: () => {
       const opened = b.toggleDoor();
@@ -246,6 +812,25 @@ for (const b of town.enterableBuildings) {
         mood: opened ? 'happy' : 'neutral',
       });
     },
+  });
+}
+
+// Register all 3 Town NPCs!
+for (const npc of townNpcs.npcs) {
+  interactionSystem.register({
+    id: `talk_${npc.id}`,
+    modes: ['walking'],
+    radius: 2.35,
+    priority: 6,
+    promptYOffset: 1.55,
+    getPosition: () => npc.pos,
+    canInteract: () => {
+      if (isBusyModalOrSeq()) return false;
+      if (npc.buildingId && gameState.data.insideBuildingId !== npc.buildingId) return false;
+      return true;
+    },
+    getLabel: () => `对话 · ${npc.nameZh}`,
+    onInteract: () => startNpcConversation(npc),
   });
 }
 
@@ -276,67 +861,23 @@ if (town.playerHome?.worldAnchors?.aquarium) {
     priority: 4,
     promptYOffset: 0.85,
     getPosition: () => town.playerHome.worldAnchors.aquarium,
-    canInteract: () => gameState.data.insideBuildingId === 'player_home',
+    canInteract: () => gameState.data.insideBuildingId === 'player_home' && !isBusyModalOrSeq(),
     getLabel: () => `观赏 / 管理家里鱼缸（${gameState.data.aquariumFish.length}/10）`,
     onInteract: () => openAquariumView(),
   });
 }
 
-const WEATHER_CYCLE = ['morning', 'sunny', 'sunset', 'overcast'];
-const WEATHER_NAMES = {
-  morning: '清晨微光',
-  sunny: '晴朗午后',
-  sunset: '黄金日落',
-  overcast: '薄雾微阴',
-};
-
 if (town.playerHome?.worldAnchors?.bed) {
   interactionSystem.register({
     id: 'home_bed',
     modes: ['walking'],
-    radius: 1.45,
+    radius: 1.55,
     priority: 4,
     promptYOffset: 0.75,
     getPosition: () => town.playerHome.worldAnchors.bed,
-    canInteract: () => gameState.data.insideBuildingId === 'player_home',
-    getLabel: () => '小憩片刻（切换时段）',
-    onInteract: () => {
-      const curIdx = WEATHER_CYCLE.indexOf(gameState.data.weather);
-      const nextIdx = (curIdx + 1) % WEATHER_CYCLE.length;
-      const nextWeather = WEATHER_CYCLE[nextIdx];
-      const newDay = nextIdx === 0;
-      atmosphere.applyPreset(nextWeather);
-      syncWeatherUI(nextWeather);
-      gameState.setWeather(nextWeather, newDay);
-      eventBus.emit('ui:toast', {
-        text: newDay
-          ? `美美睡了一觉，迎来了第 ${gameState.data.day} 天的${WEATHER_NAMES[nextWeather]}！`
-          : `小憩片刻，窗外已是「${WEATHER_NAMES[nextWeather]}」时分`,
-        portrait: 'player',
-        mood: 'happy',
-      });
-    },
-  });
-}
-
-const workshopBuilding = town.enterableBuildings.find((b) => b.id === 'artisan_workshop');
-if (workshopBuilding?.worldAnchors?.workbench) {
-  interactionSystem.register({
-    id: 'artisan_workbench',
-    modes: ['walking'],
-    radius: 1.75,
-    priority: 4,
-    promptYOffset: 0.85,
-    getPosition: () => workshopBuilding.worldAnchors.workbench,
-    canInteract: () => gameState.data.insideBuildingId === 'artisan_workshop',
-    getLabel: () => '查看老周的制竿工作台',
-    onInteract: () => {
-      eventBus.emit('ui:toast', {
-        text: '老周：「下一阶段接入 NPC 对话和商店后，就能在这里打造进阶钓竿啦！」',
-        portrait: 'npc_artisan',
-        mood: 'happy',
-      });
-    },
+    canInteract: () => gameState.data.insideBuildingId === 'player_home' && !isBusyModalOrSeq(),
+    getLabel: () => '上床小憩（躺下睡觉切换时段）',
+    onInteract: () => startCozyBedSleep(),
   });
 }
 
@@ -347,11 +888,11 @@ interactionSystem.register({
   priority: 2,
   promptYOffset: 0.75,
   getPosition: () => town.farmPlotAnchor,
-  canInteract: () => !gameState.data.insideBuildingId && !fishingSystem.isActive(),
+  canInteract: () => !gameState.data.insideBuildingId && !isBusyModalOrSeq(),
   getLabel: () => '查看向阳菜地（种田预留）',
   onInteract: () => {
     eventBus.emit('ui:toast', {
-      text: '已预留 12 块向阳菜地，后续将开放翻土、播种、浇水与厨房食材联动！',
+      text: '已预留 12 块向阳菜地，未来将与畜牧牧场、厨房做饭一起解锁！',
       portrait: 'player',
       mood: 'happy',
     });
@@ -359,9 +900,10 @@ interactionSystem.register({
 });
 
 // ---------------------------------------------------------------------------
-// 6. Fishing HUD, Catch Card, Basket & Aquarium Management UI
+// 9. HUD, Fishing UI, Catch Card, Basket & Aquarium Management
 // ---------------------------------------------------------------------------
 const btnTown = document.getElementById('btn-focus-town');
+const btnVoice = document.getElementById('btn-toggle-voice');
 const pitchSlider = document.getElementById('ctrl-pitch');
 const sunElevSlider = document.getElementById('ctrl-sun-elev');
 const sunAzimSlider = document.getElementById('ctrl-sun-azim');
@@ -396,7 +938,10 @@ const catchFishNameEl = document.getElementById('catch-fish-name');
 const catchFishMetaEl = document.getElementById('catch-fish-meta');
 const catchReleaseLabelEl = document.getElementById('catch-release-label');
 
-const specMap = new Map(ecosystem.speciesCatalog.map((sp) => [sp.id, sp]));
+btnVoice?.addEventListener('click', () => {
+  const muted = voiceBlip.toggleMute();
+  btnVoice.textContent = muted ? '拟声: 关' : '拟声: 开';
+});
 
 let toastTimeout = null;
 function showToast({ text, portrait = 'player', mood = 'neutral' }) {
@@ -413,7 +958,6 @@ function showToast({ text, portrait = 'player', mood = 'neutral' }) {
 }
 eventBus.on('ui:toast', showToast);
 
-// Fishing phase -> HUD state synchronization
 eventBus.on('fishing:stateChanged', ({ phase, spec }) => {
   if (phase === 'idle') {
     biteAlertEl?.classList.add('hidden');
@@ -460,8 +1004,12 @@ eventBus.on('fishing:fightTick', ({ progress, tension, fishMood }) => {
 
 eventBus.on('fishing:caught', (info) => {
   if (!catchModalEl || !info) return;
+  gameState.consumeActiveBait();
+  voiceBlip.playBlip('dog', 66);
+
   const { spec, lengthCm, grade, price, echo, isNewSpecies, isNewRecord } = info;
-  const iconUrl = getFishIconUrl(spec.id);
+  // Always returns either Codex's watercolor PNG or a species-accurate painted fish illustration!
+  const iconUrl = getFishIconUrl(spec.id, spec);
 
   if (catchBadgesEl) {
     const badges = [];
@@ -479,10 +1027,6 @@ eventBus.on('fishing:caught', (info) => {
     catchFishImgEl.alt = spec.nameZh;
     catchFishImgEl.classList.remove('hidden');
     catchFishFallbackEl.classList.add('hidden');
-  } else if (catchFishImgEl && catchFishFallbackEl) {
-    catchFishImgEl.classList.add('hidden');
-    catchFishFallbackEl.style.background = spec.swatch;
-    catchFishFallbackEl.classList.remove('hidden');
   }
 
   if (catchFishNameEl) catchFishNameEl.textContent = spec.nameZh;
@@ -503,11 +1047,11 @@ document.getElementById('btn-catch-release')?.addEventListener('click', () => {
   fishingSystem.resolveCatchChoice('release', water.addRipple);
 });
 
-// Pointer controls on bite alert, reel button, and bottom cast button
 biteAlertEl?.addEventListener('click', () => fishingSystem.onActionDown(water.addRipple));
 
 btnCastAction?.addEventListener('pointerdown', (e) => {
   e.preventDefault();
+  if (dialogueSystem.isOpen() || shopState.open || sleepSeq.active) return;
   fishingSystem.onActionDown(water.addRipple);
 });
 window.addEventListener('pointerup', () => {
@@ -549,20 +1093,21 @@ function syncHudState() {
 
   const rod = getRodSpec(s.equipment.rodId);
   const bait = getBaitSpec(s.equipment.baitId);
+  const baitQty = s.equipment.baitCounts[bait.id] || 0;
   if (rodImg) rodImg.src = rod.icon;
   if (rodName) rodName.textContent = rod.nameZh;
   if (baitImg) baitImg.src = bait.icon;
-  if (baitName) baitName.textContent = bait.nameZh;
+  if (baitName) baitName.textContent = `${bait.nameZh} ×${baitQty}`;
 }
 eventBus.on('state:changed', syncHudState);
 syncHudState();
 
 function buildFishRowHtml(rec) {
   const sp = specMap.get(rec.speciesId);
-  const iconUrl = getFishIconUrl(rec.speciesId);
+  const iconUrl = getFishIconUrl(rec.speciesId, sp);
   return `
     <div class="aq-fish-thumb">
-      ${iconUrl ? `<img src="${iconUrl}" alt="${sp?.nameZh || ''}" />` : `<span class="species-swatch" style="background:${sp?.swatch || '#6fd3c4'}"></span>`}
+      <img src="${iconUrl || ''}" alt="${sp?.nameZh || ''}" />
     </div>
     <div class="aq-fish-info">
       <div class="aq-fish-name">${sp?.nameZh || rec.speciesId} <span class="aq-grade">${rec.grade || '普通'}</span></div>
@@ -571,7 +1116,6 @@ function buildFishRowHtml(rec) {
   `;
 }
 
-// Render Portable Fish Basket Drawer
 function renderBasketModal() {
   const listEl = document.getElementById('basket-fish-list');
   const countBadge = document.getElementById('basket-count-badge');
@@ -593,7 +1137,6 @@ function renderBasketModal() {
   }
 }
 
-// Render Home Indoor Aquarium Manager (Tank Fish + One-Click Put-In from Basket!)
 function renderAquariumModal() {
   const tankListEl = document.getElementById('aquarium-fish-list');
   const basketListEl = document.getElementById('aquarium-basket-list');
@@ -667,7 +1210,7 @@ function renderAquariumModal() {
 
 document.getElementById('btn-close-aquarium')?.addEventListener('click', closeAquariumView);
 document.getElementById('btn-open-basket')?.addEventListener('click', () => {
-  if (camState.mode === 'aquarium') return;
+  if (camState.mode === 'aquarium' || shopState.open || dialogueSystem.isOpen()) return;
   const willShow = basketModal?.classList.contains('hidden');
   fishPanel?.classList.add('hidden');
   tweakPanel?.classList.add('hidden');
@@ -682,26 +1225,44 @@ document.getElementById('btn-close-basket')?.addEventListener('click', () => {
   basketModal?.classList.add('hidden');
 });
 
-// Gear Cycle Buttons
+// Gear Cycle Buttons (Cycles owned rods; prompts visiting Old Zhou's Workshop if only bamboo is owned!)
 document.getElementById('btn-cycle-rod')?.addEventListener('click', () => {
-  if (fishingSystem.isActive()) return;
-  const idx = ROD_CATALOG.findIndex((r) => r.id === gameState.data.equipment.rodId);
-  const next = ROD_CATALOG[(idx + 1) % ROD_CATALOG.length];
+  if (isBusyModalOrSeq()) return;
+  const owned = gameState.data.equipment.ownedRods;
+  if (owned.length <= 1) {
+    showToast({
+      text: '目前只有初始竹竿，推门进渔市后面的「老周渔具工坊」可以购买进阶鱼竿哦！',
+      portrait: 'npc_artisan',
+      mood: 'happy',
+    });
+    return;
+  }
+  const idx = owned.indexOf(gameState.data.equipment.rodId);
+  const nextId = owned[(idx + 1) % owned.length];
+  const next = getRodSpec(nextId);
   gameState.setEquipment({ rodId: next.id });
   playerAvatar.setRodStyle(next.id);
-  showToast({ text: `已切换鱼竿：${next.nameZh}（${next.desc}）`, portrait: 'player', mood: 'happy' });
+  showToast({ text: `已切换鱼竿：${next.nameZh}`, portrait: 'player', mood: 'happy' });
 });
 
 document.getElementById('btn-cycle-bait')?.addEventListener('click', () => {
-  if (fishingSystem.isActive()) return;
+  if (isBusyModalOrSeq()) return;
   const idx = BAIT_CATALOG.findIndex((b) => b.id === gameState.data.equipment.baitId);
   const next = BAIT_CATALOG[(idx + 1) % BAIT_CATALOG.length];
   gameState.setEquipment({ baitId: next.id });
-  showToast({ text: `已切换鱼饵：${next.nameZh}（吸引：${next.targetHint}）`, portrait: 'player', mood: 'neutral' });
+  const qty = gameState.data.equipment.baitCounts[next.id] || 0;
+  showToast({
+    text: `已切换鱼饵：${next.nameZh}（余 ${qty} 份 · 吸引：${next.targetHint}）`,
+    portrait: 'player',
+    mood: 'neutral',
+  });
 });
 
 document.getElementById('btn-warp-home')?.addEventListener('click', () => {
+  if (sleepSeq.active) return;
   fishingSystem.cancel();
+  dialogueSystem.close();
+  closeShop();
   closeAquariumView();
   playerController.warpToHomeDock();
   setCameraMode(gameState.data.playerMode === 'walking' ? 'walking' : 'boat');
@@ -710,8 +1271,23 @@ document.getElementById('btn-warp-home')?.addEventListener('click', () => {
 // Keyboard handling
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
+  if (sleepSeq.active) return;
 
-  // Catch Modal quick keyboard choices!
+  if (shopState.open) {
+    if (e.code === 'Escape') closeShop();
+    return;
+  }
+
+  if (dialogueSystem.isOpen()) {
+    if (e.code === 'Escape') {
+      dialogueSystem.close();
+    } else if (e.code === 'Space' || e.code === 'KeyE' || e.code === 'Enter') {
+      e.preventDefault();
+      dialogueSystem.advance();
+    }
+    return;
+  }
+
   if (fishingSystem.state.phase === 'modal') {
     if (e.code === 'Digit1' || e.code === 'Enter' || e.code === 'KeyE') {
       e.preventDefault();
@@ -780,7 +1356,6 @@ window.addEventListener('keyup', (e) => {
   }
 });
 
-// Pointer camera orbit & zoom (and clicking canvas during bite/fight reels!)
 canvas.addEventListener(
   'wheel',
   (e) => {
@@ -816,7 +1391,7 @@ window.addEventListener('pointermove', (e) => {
   if (pitchSlider) pitchSlider.value = String(Math.round(camState.targetPitchDeg));
 });
 
-// Interactive 25-Species Fish Guide Drawer
+// Interactive 25-Species Fish Guide Drawer (ALL 25 species show painted fish icons!)
 function highlightSelectedSpecies(activeId) {
   document.querySelectorAll('.species-item').forEach((el) => {
     el.classList.toggle('active', el.dataset.speciesId === activeId);
@@ -842,16 +1417,12 @@ if (fishListContainer) {
     fishListContainer.appendChild(catHeader);
 
     for (const sp of list) {
-      const iconUrl = getFishIconUrl(sp.id);
+      const iconUrl = getFishIconUrl(sp.id, sp);
       const btn = document.createElement('button');
       btn.className = 'species-item';
       btn.dataset.speciesId = sp.id;
       btn.innerHTML = `
-        ${
-          iconUrl
-            ? `<img class="species-thumb" src="${iconUrl}" alt="${sp.nameZh}" />`
-            : `<span class="species-swatch" style="background:${sp.swatch}"></span>`
-        }
+        <img class="species-thumb" src="${iconUrl || ''}" alt="${sp.nameZh}" />
         <span class="species-name">${sp.nameZh}</span>
         <span class="species-meta">${sp.sizeLabel} ×${sp.count}</span>
       `;
@@ -964,7 +1535,7 @@ setCameraMode(camState.mode);
 updateCameraImmediate();
 
 // ---------------------------------------------------------------------------
-// 7. Resize & Main Render Loop
+// 10. Resize & Main Render Loop
 // ---------------------------------------------------------------------------
 function handleResize() {
   const w = window.innerWidth;
@@ -989,11 +1560,16 @@ function animate() {
   const elapsed = clock.elapsedTime;
   const isWalking = gameState.data.playerMode === 'walking';
   const fishingActive = fishingSystem.isActive();
-  const inputLocked = camState.mode === 'aquarium' || fishingSystem.state.phase === 'modal';
+  const inputLocked =
+    camState.mode === 'aquarium' ||
+    fishingSystem.state.phase === 'modal' ||
+    dialogueSystem.isOpen() ||
+    shopState.open ||
+    sleepSeq.active;
 
   underwaterSharedUniforms.uTime.value = elapsed;
 
-  // 1. Update Boat, Land Walking & Complete Fishing System
+  // 1. Update Boat, Land Walking (or Bed Sleeping Animation!), Fishing & Dialogue
   boat.update(
     dt,
     elapsed,
@@ -1002,10 +1578,22 @@ function animate() {
     atmosphere.state.nightGlow,
     !inputLocked && !fishingActive
   );
-  playerController.update(dt, elapsed, camState.yawDeg, inputLocked, fishingActive);
-  fishingSystem.update(dt, elapsed, water.addRipple);
 
-  // 2. Update Town (Openable Doors, Roof+Front Cutaway, Live 3D Indoor Aquarium)
+  const sleepingNow = updateBedSleepSequence(dt, elapsed);
+  if (!sleepingNow) {
+    playerController.update(
+      dt,
+      elapsed,
+      camState.yawDeg,
+      inputLocked,
+      fishingActive,
+      townNpcs.npcColliders
+    );
+  }
+  fishingSystem.update(dt, elapsed, water.addRipple);
+  dialogueSystem.update(dt);
+
+  // 2. Update Town & 3 Interactive Town NPCs
   const insideBuilding = town.update(
     dt,
     elapsed,
@@ -1015,10 +1603,18 @@ function animate() {
   const newInsideId = insideBuilding ? insideBuilding.id : null;
   if (newInsideId !== gameState.data.insideBuildingId) {
     gameState.setInsideBuilding(newInsideId);
-    if (camState.mode !== 'aquarium' && camState.mode !== 'town' && camState.mode !== 'fish') {
+    if (
+      camState.mode !== 'aquarium' &&
+      camState.mode !== 'dialogue' &&
+      camState.mode !== 'town' &&
+      camState.mode !== 'fish'
+    ) {
       setCameraMode(newInsideId ? 'indoor' : 'walking');
     }
   }
+
+  playerController.getActorWorldPos(actorPosTmp);
+  townNpcs.update(dt, elapsed, actorPosTmp);
 
   // 3. Update Amphibious Dog Companion, Lily Pads & 25-Species Fish Ecosystem
   companion.update(dt, elapsed, boat.state, water.addRipple, {
@@ -1041,7 +1637,7 @@ function animate() {
     gameState.updateBoatPose(boat.state.pos.x, boat.state.pos.z, boat.state.yaw);
   }
 
-  // 4. Smart Camera Director Tracking (with gentle focus bias toward bobber while fishing!)
+  // 4. Smart Camera Director Tracking
   let desiredTargetX = boat.state.pos.x + 0.8;
   let desiredTargetY = 0.0;
   let desiredTargetZ = boat.state.pos.z - 0.65;
@@ -1062,6 +1658,13 @@ function animate() {
     desiredTargetX = aq.x;
     desiredTargetY = aq.y + 0.02;
     desiredTargetZ = aq.z;
+  } else if (camState.mode === 'dialogue' && camState.focusNpcId) {
+    const npc = townNpcs.getById(camState.focusNpcId);
+    if (npc) {
+      desiredTargetX = THREE.MathUtils.lerp(npc.pos.x, playerController.walkerState.pos.x, 0.35);
+      desiredTargetY = npc.pos.y + 0.82;
+      desiredTargetZ = THREE.MathUtils.lerp(npc.pos.z, playerController.walkerState.pos.z, 0.35);
+    }
   } else if (camState.mode === 'indoor' && insideBuilding) {
     desiredTargetX = THREE.MathUtils.lerp(
       insideBuilding.interiorCenterWorld.x,
@@ -1080,7 +1683,6 @@ function animate() {
     desiredTargetZ = playerController.walkerState.pos.z;
   }
 
-  // Smoothly bias camera slightly toward the bobber/fighting fish while actively fishing!
   if (
     fishingActive &&
     camState.mode !== 'town' &&
@@ -1109,10 +1711,9 @@ function animate() {
   atmosphere.update(elapsed, camState.target);
 
   // 5. Update World-Anchored [E] Interaction Prompt & Bite Alert Position
-  if (camState.mode === 'aquarium' || fishingActive) {
+  if (camState.mode === 'aquarium' || isBusyModalOrSeq()) {
     interactPromptEl?.classList.add('hidden');
   } else {
-    playerController.getActorWorldPos(actorPosTmp);
     interactionSystem.update(
       actorPosTmp,
       { mode: gameState.data.playerMode, insideBuildingId: gameState.data.insideBuildingId },
@@ -1131,7 +1732,7 @@ function animate() {
     }
   }
 
-  // 6. Render Water Refraction Pass + Final Frame
+  // 6. Render Refraction Water Pass + Final Frame
   water.update(elapsed, camera, boat.state);
   water.renderRefractionPass(renderer, scene, camera);
   renderer.render(scene, camera);

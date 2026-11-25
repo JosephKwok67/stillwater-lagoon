@@ -446,6 +446,8 @@ function createCottage({
       bedGroup.position.set(-1.26, floorY + 0.04, -depth * 0.5 + 0.98);
       group.add(bedGroup);
       interiorAnchors.bed = new THREE.Vector3(-1.26, floorY + 0.5, -depth * 0.5 + 1.05);
+      interiorAnchors.bedLie = new THREE.Vector3(-1.26, floorY + 0.44, -depth * 0.5 + 0.88);
+      interiorAnchors.bedWake = new THREE.Vector3(-0.32, floorY + 0.05, -depth * 0.5 + 1.25);
 
       // 4. Tiny wooden nightstand & glowing reading lamp
       const table = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.44, 0.44), trimMat);
@@ -645,44 +647,65 @@ function createCottage({
 
   // Optional cozy covered wooden porch on the front (+Z)
   let porchLanternPos = null;
+  const porchD = 1.22;
   if (hasPorch) {
-    const porchD = 1.05;
-    const deck = new THREE.Mesh(new THREE.BoxGeometry(width + 0.18, 0.14, porchD), trimMat);
-    deck.position.set(0, floorY - 0.02, depth * 0.5 + porchD * 0.5);
+    // Solid wooden porch deck with deep skirt under it so porch never floats on any slope!
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(width + 0.18, 0.16, porchD), trimMat);
+    deck.position.set(0, floorY - 0.03, depth * 0.5 + porchD * 0.5);
     deck.castShadow = true;
     deck.receiveShadow = true;
     group.add(deck);
 
-    // Porch posts leave a wide clear opening right in front of the door!
-    const pPostGeo = new THREE.CylinderGeometry(0.055, 0.06, 1.48, 7);
-    for (const px of [-width * 0.45, width * 0.08, width * 0.45]) {
+    const porchSkirt = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, 0.85, porchD - 0.08), stoneMat);
+    porchSkirt.position.set(0, floorY - 0.5, depth * 0.5 + porchD * 0.5);
+    group.add(porchSkirt);
+
+    // Dynamically place porch posts strictly OUTSIDE the doorway swing clearance (zero door-post clipping!)
+    const pPostGeo = new THREE.CylinderGeometry(0.055, 0.06, 1.52, 7);
+    const doorClearL = doorX - doorW * 0.5 - 0.24;
+    const doorClearR = doorX + doorW * 0.5 + 0.24;
+    const postXs = [-width * 0.46, width * 0.46];
+    if (doorClearL > -width * 0.34 && doorClearL < width * 0.34) postXs.push(doorClearL);
+    if (doorClearR > -width * 0.34 && doorClearR < width * 0.34) postXs.push(doorClearR);
+
+    for (const px of postXs) {
       const pPost = new THREE.Mesh(pPostGeo, trimMat);
-      pPost.position.set(px, floorY + 0.72, depth * 0.5 + porchD - 0.1);
+      pPost.position.set(px, floorY + 0.74, depth * 0.5 + porchD - 0.1);
       pPost.castShadow = true;
       group.add(pPost);
     }
 
     // Sloped porch awning roof (also fades smoothly with roofCutawayGroup!)
-    const awning = new THREE.Mesh(new THREE.BoxGeometry(width + 0.32, 0.09, porchD + 0.25), roofMat);
-    awning.position.set(0, floorY + 1.5, depth * 0.5 + porchD * 0.48);
+    const awning = new THREE.Mesh(new THREE.BoxGeometry(width + 0.32, 0.09, porchD + 0.24), roofMat);
+    awning.position.set(0, floorY + 1.54, depth * 0.5 + porchD * 0.48);
     awning.rotation.x = 0.22;
     awning.castShadow = true;
     roofCutawayGroup.add(awning);
 
-    // Porch railing on right half (leaving entry steps wide open in front of door)
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(width * 0.38, 0.07, 0.07), trimMat);
-    rail.position.set(width * 0.26, floorY + 0.52, depth * 0.5 + porchD - 0.1);
-    group.add(rail);
+    // Porch railings strictly outside the doorway opening (never blocking steps or door swing!)
+    const railZ = depth * 0.5 + porchD - 0.1;
+    const leftRailLen = doorClearL - -width * 0.46;
+    if (leftRailLen > 0.38) {
+      const rL = new THREE.Mesh(new THREE.BoxGeometry(leftRailLen, 0.07, 0.07), trimMat);
+      rL.position.set(-width * 0.46 + leftRailLen * 0.5, floorY + 0.52, railZ);
+      group.add(rL);
+    }
+    const rightRailLen = width * 0.46 - doorClearR;
+    if (rightRailLen > 0.38) {
+      const rR = new THREE.Mesh(new THREE.BoxGeometry(rightRailLen, 0.07, 0.07), trimMat);
+      rR.position.set(doorClearR + rightRailLen * 0.5, floorY + 0.52, railZ);
+      group.add(rR);
+    }
 
-    // Warm little porch steps leading smoothly down to stone patio / pier
+    // Wide welcoming porch steps centered cleanly in front of the doorway!
     for (let s = 0; s < 2; s++) {
-      const step = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.1, 0.32), trimMat);
-      step.position.set(doorX, floorY - 0.06 - s * 0.09, depth * 0.5 + porchD + 0.16 + s * 0.28);
+      const step = new THREE.Mesh(new THREE.BoxGeometry(doorW + 0.34, 0.12, 0.32), trimMat);
+      step.position.set(doorX, floorY - 0.07 - s * 0.08, depth * 0.5 + porchD + 0.15 + s * 0.26);
       step.receiveShadow = true;
       group.add(step);
     }
 
-    porchLanternPos = new THREE.Vector3(doorX + 0.62, floorY + 1.24, depth * 0.5 + 0.14);
+    porchLanternPos = new THREE.Vector3(doorX + doorW * 0.62, floorY + 1.24, depth * 0.5 + 0.14);
   }
 
   // Stone chimney with smoke emitter coordinates (attached to roofCutawayGroup!)
@@ -781,23 +804,28 @@ function buildWoodenPier({
 }) {
   const pierGroup = new THREE.Group();
   const pierLen = pierEndZ - pierStartZ;
-  const shoreY = Math.max(pierY, getWorldElevation(pierX, pierStartZ));
+  const shoreY = Math.max(pierY, getWorldElevation(pierX, pierStartZ) + 0.04);
+  const rampLen = Math.min(2.15, pierLen * 0.44);
 
-  const plankCount = Math.max(12, Math.round(pierLen * 3.2));
+  const plankCount = Math.max(12, Math.round(pierLen * 3.4));
   for (let i = 0; i < plankCount; i++) {
     const t = i / (plankCount - 1);
     const pz = pierStartZ + t * pierLen;
-    // Smooth shore ramp over the first 1.6 units so walking from shore onto pier is seamless
     const distFromShore = pz - pierStartZ;
-    const rampBlend = 1.0 - clamp(distFromShore / 1.85, 0, 1);
+    const rampBlend = 1.0 - clamp(distFromShore / rampLen, 0, 1);
     const py = pierY + (shoreY - pierY) * rampBlend * rampBlend;
 
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(pierW, 0.09, 0.25), timberMat);
-    plank.position.set(pierX + (rng() - 0.5) * 0.025, py, pz);
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(pierW, 0.1, 0.25), timberMat);
+    plank.position.set(pierX + (rng() - 0.5) * 0.02, py, pz);
     plank.castShadow = true;
     plank.receiveShadow = true;
     pierGroup.add(plank);
   }
+
+  // Solid wooden shore abutment under ramp head so pier never floats above sloped sand!
+  const abut = new THREE.Mesh(new THREE.BoxGeometry(pierW - 0.08, 1.0, 0.65), darkTimberMat);
+  abut.position.set(pierX, shoreY - 0.52, pierStartZ + 0.22);
+  pierGroup.add(abut);
 
   // Longitudinal stringers under planks
   for (const sx of [-pierW * 0.42, pierW * 0.42]) {
@@ -851,8 +879,8 @@ function buildWoodenPier({
     maxZ: pierEndZ + 0.1,
     getY: (x, z) => {
       const distFromShore = Math.max(0, z - pierStartZ);
-      const rampBlend = 1.0 - clamp(distFromShore / 1.85, 0, 1);
-      return pierY + 0.05 + (shoreY - pierY) * rampBlend * rampBlend;
+      const rampBlend = 1.0 - clamp(distFromShore / rampLen, 0, 1);
+      return pierY + 0.055 + (shoreY - pierY) * rampBlend * rampBlend;
     },
   });
 
@@ -996,24 +1024,23 @@ export function buildLakesideTown(scene) {
     const doorWorldPos = toWorld(doorX, floorY + 0.65, depth * 0.5);
     const interiorCenterWorld = toWorld(0, floorY + 0.5, 0);
 
-    // Register walkable deck covering interior floor + front porch!
-    const porchExtraZ = hasPorch ? 1.55 : 0.35;
+    // Register walkable deck covering interior floor + spacious front porch + steps!
+    const porchExtraZ = hasPorch ? 1.85 : 0.35;
     walkableDecks.push({
       contains: (px, pz) => {
         const { lx, lz } = toLocal(px, pz);
         return (
-          Math.abs(lx) <= width * 0.5 + 0.15 &&
+          Math.abs(lx) <= width * 0.5 + 0.18 &&
           lz >= -depth * 0.5 + 0.05 &&
           lz <= depth * 0.5 + porchExtraZ
         );
       },
       getY: (px, pz) => {
         const { lz } = toLocal(px, pz);
-        if (lz <= depth * 0.5 + (hasPorch ? 1.0 : 0.15)) {
+        if (lz <= depth * 0.5 + (hasPorch ? 1.22 : 0.15)) {
           return wy + floorY + 0.05;
         }
-        // Smooth step ramp from porch edge down to surrounding patio ground
-        const t = clamp((lz - (depth * 0.5 + 1.0)) / 0.55, 0, 1);
+        const t = clamp((lz - (depth * 0.5 + 1.22)) / 0.63, 0, 1);
         const groundY = getWorldElevation(px, pz);
         return THREE.MathUtils.lerp(wy + floorY + 0.05, groundY, t);
       },
@@ -1069,14 +1096,14 @@ export function buildLakesideTown(scene) {
         const halfD = depth * 0.5;
         const pad = actorRadius + wallT * 0.5;
 
-        // Broad-phase check around house footprint
-        if (Math.abs(lx) > halfW + pad + 0.3 || Math.abs(lz) > halfD + pad + 0.3) return;
+        // Broad-phase check around house footprint + porch
+        if (Math.abs(lx) > halfW + pad + 0.35 || lz < -halfD - pad - 0.3 || lz > halfD + 1.45) return;
 
         let nlx = lx;
         let nlz = lz;
 
         const doorPassable = record.isDoorOpen && record.doorOpenAmount > 0.35;
-        const inDoorSpan = Math.abs(nlx - doorX) < doorW * 0.5 - actorRadius * 0.65;
+        const inDoorSpan = Math.abs(nlx - doorX) < doorW * 0.5 - actorRadius * 0.55;
 
         // Helper: push point out of a local axis-aligned wall box [minX, maxX] x [minZ, maxZ]
         const pushBox = (minX, maxX, minZ, maxZ) => {
@@ -1092,7 +1119,6 @@ export function buildLakesideTown(scene) {
               nlx += (dx / d) * push;
               nlz += (dz / d) * push;
             } else {
-              // Inside box center fallback: eject along shortest axis
               const dl = Math.abs(nlx - minX);
               const dr = Math.abs(maxX - nlx);
               const db = Math.abs(nlz - minZ);
@@ -1123,22 +1149,45 @@ export function buildLakesideTown(scene) {
           const doorR = doorX + doorW * 0.5;
           if (doorL > -halfW + 0.02) pushBox(-halfW, doorL, fMinZ, fMaxZ);
           if (doorR < halfW - 0.02) pushBox(doorR, halfW, fMinZ, fMaxZ);
-          // Slight jamb guides so player never clips corners while walking through
           if (!inDoorSpan && nlz > fMinZ - actorRadius && nlz < fMaxZ + actorRadius) {
             pushBox(-halfW, doorL, fMinZ, fMaxZ);
             pushBox(doorR, halfW, fMinZ, fMaxZ);
           }
+          // Swung-open wooden door blade along left edge of doorway (+Z outward onto porch!)
+          pushBox(doorL - 0.05, doorL + 0.09, fMaxZ - 0.02, fMaxZ + 0.84);
         }
 
-        // Interior furniture bounds inside Player's Home so player walks around bed & aquarium naturally
+        // Porch front railings (keep player & dog from clipping through wooden railings!)
+        if (hasPorch) {
+          const doorClearL = doorX - doorW * 0.5 - 0.24;
+          const doorClearR = doorX + doorW * 0.5 + 0.24;
+          const railZ = halfD + 1.12;
+          if (doorClearL - -halfW * 0.92 > 0.35) {
+            pushBox(-halfW * 0.94, doorClearL, railZ - 0.07, railZ + 0.07);
+          }
+          if (halfW * 0.92 - doorClearR > 0.35) {
+            pushBox(doorClearR, halfW * 0.94, railZ - 0.07, railZ + 0.07);
+          }
+        }
+
+        // Complete Interior Furniture Collision Boxes across ALL 3 enterable houses!
         if (record.id === 'player_home') {
           // Aquarium cabinet along back-right
-          pushBox(-0.26, 1.62, -halfD + 0.14, -halfD + 0.88);
+          pushBox(-0.28, 1.66, -halfD + 0.14, -halfD + 0.92);
           // Cozy bed along back-left
-          pushBox(-1.92, -0.66, -halfD + 0.18, -halfD + 1.72);
+          pushBox(-1.92, -0.64, -halfD + 0.16, -halfD + 1.74);
+          // Nightstand & lamp on right wall
+          pushBox(1.4, 1.94, 0.2, 0.72);
         } else if (record.id === 'artisan_workshop') {
           // Workbench along back wall
-          pushBox(-1.0, 1.2, -halfD + 0.16, -halfD + 0.92);
+          pushBox(-1.02, 1.22, -halfD + 0.14, -halfD + 0.94);
+          // Fishing rod display rack along left wall
+          pushBox(-halfW + 0.14, -halfW + 0.56, -0.86, 0.58);
+        } else if (record.id === 'neighbor_east') {
+          // Round wood dining table
+          pushBox(-0.06, 0.96, -0.96, 0.06);
+          // Bookshelf along back-left wall
+          pushBox(-1.35, -0.15, -halfD + 0.14, -halfD + 0.56);
         }
 
         if (nlx !== lx || nlz !== lz) {
@@ -1189,12 +1238,34 @@ export function buildLakesideTown(scene) {
   townGroup.add(homeLight);
   warmLights.push({ light: homeLight, base: 1.05 });
 
-  // Stone patio apron seamlessly linking house porch to player's wooden pier
-  const patio = new THREE.Mesh(new THREE.CylinderGeometry(2.85, 3.0, 0.14, 18), cobbleMat);
-  patio.scale.set(1.25, 1.0, 0.9);
-  patio.position.set(homeX, homeY + 0.02, homeZ + 1.95);
-  patio.receiveShadow = true;
-  townGroup.add(patio);
+  // Solid grounded stone courtyard terrace linking Player's Porch smoothly to the Pier Head!
+  // Deep stone foundation skirt ensures it NEVER floats over the shoreline slope, and registered in walkableDecks!
+  const courtyardMinX = homeX - 2.35;
+  const courtyardMaxX = homeX + 2.35;
+  const courtyardMinZ = homeZ + 1.55; // -19.25 (under porch edge)
+  const courtyardMaxZ = -17.35; // stops cleanly right at the top of the wooden pier ramp!
+  const courtyardW = courtyardMaxX - courtyardMinX;
+  const courtyardD = courtyardMaxZ - courtyardMinZ;
+  const courtyardTopY = homeY + 0.04;
+
+  const courtyardSlab = new THREE.Mesh(new THREE.BoxGeometry(courtyardW, 0.14, courtyardD), cobbleMat);
+  courtyardSlab.position.set(homeX, courtyardTopY - 0.07, (courtyardMinZ + courtyardMaxZ) * 0.5);
+  courtyardSlab.receiveShadow = true;
+  const courtyardBase = new THREE.Mesh(
+    new THREE.BoxGeometry(courtyardW - 0.08, 1.35, courtyardD - 0.08),
+    stoneMat
+  );
+  courtyardBase.position.set(homeX, courtyardTopY - 0.78, (courtyardMinZ + courtyardMaxZ) * 0.5);
+  courtyardBase.receiveShadow = true;
+  townGroup.add(courtyardSlab, courtyardBase);
+
+  walkableDecks.push({
+    minX: courtyardMinX - 0.1,
+    maxX: courtyardMaxX + 0.1,
+    minZ: courtyardMinZ - 0.15,
+    maxZ: courtyardMaxZ + 0.15,
+    getY: () => courtyardTopY + 0.01,
+  });
 
   // ---- RESERVED FUTURE FARMING PLOT (Sunny Garden Plot beside Player's Cottage!) ----
   const farmX = -0.35;
@@ -1245,16 +1316,16 @@ export function buildLakesideTown(scene) {
   const farmPlotAnchor = new THREE.Vector3(farmX, farmY + 0.4, farmZ + plotD * 0.5 + 0.25);
 
   // ---- 3 WALKABLE WOODEN PIERS ----
-  // Pier 1: Player's Home Pier
+  // Pier 1: Player's Home Pier (starts cleanly flush against the front edge of the stone courtyard at z = -17.4!)
   townGroup.add(
     buildWoodenPier({
       id: 'dock_home',
       nameZh: '自家小屋码头',
       pierX: 3.6,
-      pierStartZ: -18.55,
+      pierStartZ: -17.42,
       pierEndZ: -12.6,
       pierY: 0.44,
-      pierW: 2.05,
+      pierW: 2.08,
       timberMat,
       darkTimberMat,
       rng,
@@ -1461,12 +1532,14 @@ export function buildLakesideTown(scene) {
       const sx = x0 + (x1 - x0) * t;
       const sz = z0 + (z1 - z0) * t;
       const sy = getWorldElevation(sx, sz);
-      if (sy < 0.15) continue;
+      if (sy < 0.25) continue;
+      // Skip placing loose cobbles inside the solid stone courtyard right in front of player's house
+      if (sx > 1.0 && sx < 6.2 && sz > -19.6 && sz < -17.0) continue;
       const stone = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.68 + rng() * 0.25, 0.78 + rng() * 0.25, 0.14, 9),
+        new THREE.CylinderGeometry(0.56 + rng() * 0.18, 0.64 + rng() * 0.18, 0.08, 9),
         cobbleMat
       );
-      stone.position.set(sx, sy + 0.02, sz);
+      stone.position.set(sx, sy - 0.015, sz);
       stone.receiveShadow = true;
       townGroup.add(stone);
     }
@@ -1666,9 +1739,9 @@ export function buildLakesideTown(scene) {
 
   /**
    * Resolves walking actor collisions against houses (respecting open/closed doors!),
-   * trees, market stall, and lighthouse plinth.
+   * trees, market stall, lighthouse plinth, and optional dynamic NPC colliders.
    */
-  function resolveLandCollisions(pos, actorRadius = 0.28) {
+  function resolveLandCollisions(pos, actorRadius = 0.28, extraCircles = null) {
     for (const b of enterableBuildings) {
       b.resolveCollision(pos, actorRadius);
     }
@@ -1680,6 +1753,18 @@ export function buildLakesideTown(scene) {
       if (d < minD && d > 1e-5) {
         pos.x = c.x + (dx / d) * minD;
         pos.z = c.z + (dz / d) * minD;
+      }
+    }
+    if (extraCircles) {
+      for (const c of extraCircles) {
+        const dx = pos.x - c.x;
+        const dz = pos.z - c.z;
+        const d = Math.hypot(dx, dz);
+        const minD = c.radius + actorRadius;
+        if (d < minD && d > 1e-5) {
+          pos.x = c.x + (dx / d) * minD;
+          pos.z = c.z + (dz / d) * minD;
+        }
       }
     }
   }
@@ -1711,13 +1796,13 @@ export function buildLakesideTown(scene) {
         wl.light.intensity = wl.base * (0.45 + nightGlow * 1.25);
       }
 
-      // Animate hinged doors, smooth roof cutaway, and live indoor aquarium fish!
+      // Animate hinged doors (clean 92 deg swing clear of all porch posts!), smooth roof cutaway & aquarium!
       let activeInsideBuilding = null;
       for (const b of enterableBuildings) {
         const targetDoor = b.isDoorOpen ? 1 : 0;
         b.doorOpenAmount = THREE.MathUtils.lerp(b.doorOpenAmount, targetDoor, clamp(dt * 7.5, 0, 1));
         if (b.doorPivot) {
-          b.doorPivot.rotation.y = -b.doorOpenAmount * Math.PI * 0.58;
+          b.doorPivot.rotation.y = -b.doorOpenAmount * Math.PI * 0.51;
         }
 
         const isInside = walkerPos ? b.isPointInside(walkerPos.x, walkerPos.z, 0.04) : false;

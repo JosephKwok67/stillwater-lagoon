@@ -258,6 +258,79 @@ export function createGameState(eventBus) {
       scheduleSave();
     },
 
+    sellFishFromInventory(fishUid, salePrice) {
+      const idx = state.inventory.findIndex((item) => item.uid === fishUid && item.kind === 'fish');
+      if (idx === -1) return null;
+      const [fish] = state.inventory.splice(idx, 1);
+      const earned = Math.max(1, Math.round(salePrice ?? fish.price ?? 20));
+      state.coins += earned;
+      eventBus.emit('inventory:updated', state.inventory);
+      eventBus.emit('state:changed', state);
+      scheduleSave();
+      return { fish, earned };
+    },
+
+    sellAllFishFromInventory(getPriceFn) {
+      const fishes = state.inventory.filter((item) => item.kind === 'fish');
+      if (!fishes.length) return { count: 0, totalEarned: 0 };
+      let totalEarned = 0;
+      for (const f of fishes) {
+        totalEarned += Math.max(1, Math.round(getPriceFn ? getPriceFn(f) : f.price ?? 20));
+      }
+      state.inventory = state.inventory.filter((item) => item.kind !== 'fish');
+      state.coins += totalEarned;
+      eventBus.emit('inventory:updated', state.inventory);
+      eventBus.emit('state:changed', state);
+      scheduleSave();
+      return { count: fishes.length, totalEarned };
+    },
+
+    buyRod(rodSpec) {
+      if (!rodSpec) return { ok: false, reason: '无效鱼竿' };
+      if (state.equipment.ownedRods.includes(rodSpec.id)) {
+        state.equipment.rodId = rodSpec.id;
+        eventBus.emit('equipment:changed', state.equipment);
+        eventBus.emit('state:changed', state);
+        scheduleSave();
+        return { ok: true, equippedOnly: true };
+      }
+      if (state.coins < rodSpec.price) {
+        return { ok: false, reason: `贝币不足，还需要 ${rodSpec.price - state.coins} 贝币` };
+      }
+      state.coins -= rodSpec.price;
+      state.equipment.ownedRods.push(rodSpec.id);
+      state.equipment.rodId = rodSpec.id;
+      eventBus.emit('equipment:changed', state.equipment);
+      eventBus.emit('state:changed', state);
+      scheduleSave();
+      return { ok: true, equippedOnly: false };
+    },
+
+    buyBaitPack(baitSpec, packSize = 5) {
+      if (!baitSpec) return { ok: false, reason: '无效鱼饵' };
+      const packPrice = baitSpec.price * packSize;
+      if (state.coins < packPrice) {
+        return { ok: false, reason: `贝币不足，还需要 ${packPrice - state.coins} 贝币` };
+      }
+      state.coins -= packPrice;
+      state.equipment.baitCounts[baitSpec.id] = (state.equipment.baitCounts[baitSpec.id] || 0) + packSize;
+      state.equipment.baitId = baitSpec.id;
+      eventBus.emit('equipment:changed', state.equipment);
+      eventBus.emit('state:changed', state);
+      scheduleSave();
+      return { ok: true, packPrice, packSize };
+    },
+
+    consumeActiveBait() {
+      const id = state.equipment.baitId;
+      const cur = state.equipment.baitCounts[id] || 0;
+      if (cur > 0) {
+        state.equipment.baitCounts[id] = cur - 1;
+        eventBus.emit('state:changed', state);
+        scheduleSave();
+      }
+    },
+
     updateBoatPose(x, z, yaw) {
       state.boatPose.x = Number(x.toFixed(2));
       state.boatPose.z = Number(z.toFixed(2));

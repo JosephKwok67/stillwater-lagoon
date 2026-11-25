@@ -268,6 +268,7 @@ export function createPlayerAvatar() {
 
     let targetPelvisY = 0.44;
     let targetBodyY = 0;
+    let targetBodyPitch = 0;
     let targetTorsoX = 0;
     let targetTorsoY = 0;
     let targetHeadY = 0;
@@ -280,7 +281,23 @@ export function createPlayerAvatar() {
     let showRod = false;
     let rodPitch = -0.25;
 
-    if (action === 'Sit_Row') {
+    if (action === 'Sleep_Bed') {
+      // Cozy horizontal lying pose on the wooden bed, head resting on white pillow, gentle breathing!
+      const breathe = Math.sin(elapsedTime * 1.9);
+      targetPelvisY = 0.44;
+      targetBodyY = 0.08 + breathe * 0.014;
+      targetBodyPitch = Math.PI * 0.5; // lie flat back-down facing the ceiling!
+      targetHeadY = Math.sin(elapsedTime * 0.7) * 0.08;
+      targetHeadX = 0.12;
+      legLX = 0.06;
+      legRX = -0.04;
+      kneeLX = 0.08;
+      kneeRX = 0.12;
+      armLX = -0.35 + breathe * 0.04;
+      armLZ = 0.22;
+      armRX = -0.28 - breathe * 0.04;
+      armRZ = -0.22;
+    } else if (action === 'Sit_Row') {
       const rowPhase = params.rowPhase ?? 0;
       const rowEffort = params.rowEffort ?? 0;
       const steer = params.steer ?? 0;
@@ -418,6 +435,7 @@ export function createPlayerAvatar() {
     // Smoothly interpolate all rig joints
     pelvis.position.y = THREE.MathUtils.lerp(pelvis.position.y, targetPelvisY, k);
     bodyRoot.position.y = THREE.MathUtils.lerp(bodyRoot.position.y, targetBodyY, k);
+    bodyRoot.rotation.x = THREE.MathUtils.lerp(bodyRoot.rotation.x, targetBodyPitch, k);
     upperBody.rotation.x = THREE.MathUtils.lerp(upperBody.rotation.x, targetTorsoX, k);
     upperBody.rotation.y = THREE.MathUtils.lerp(upperBody.rotation.y, targetTorsoY, k);
     headGroup.rotation.y = THREE.MathUtils.lerp(headGroup.rotation.y, targetHeadY, k);

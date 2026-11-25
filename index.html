@@ -39,10 +39,55 @@
 
       <!-- Compact top-right navigation & look-dev bar -->
       <div class="hud-top-right">
+        <button id="btn-toggle-voice" class="pill-btn" title="开关 NPC 轻柔拟声哼鸣">拟声: 开</button>
         <button id="btn-toggle-fish" class="pill-btn" title="查看水下全部 25 种生物并点击跟踪观察">鱼种图鉴</button>
         <button id="btn-focus-town" class="pill-btn" title="切换至岸边小镇与自家小屋视角">看岸边小镇</button>
         <button id="btn-reset-cam" class="pill-btn" title="恢复标准跟随视角">重置视角</button>
         <button id="btn-toggle-panel" class="pill-btn" title="展开画风与天气参数">画风与天气</button>
+      </div>
+
+      <!-- Dreamy cozy sleep transition overlay & floating Zzz indicator -->
+      <div id="sleep-zzz" class="sleep-zzz hidden">Z z z ...</div>
+      <div id="sleep-overlay" class="sleep-overlay hidden">
+        <div id="sleep-overlay-text" class="sleep-overlay-text">小憩片刻 · 静水微风轻轻吹过...</div>
+      </div>
+
+      <!-- Storybook NPC Subtitle Dialogue Box with Codex High-Res Portrait -->
+      <div id="dialogue-box" class="dialogue-box hidden">
+        <div class="dlg-portrait-wrap">
+          <img id="dlg-portrait" class="dlg-portrait" src="/assets/portraits/npc_market/neutral.png" alt="" />
+        </div>
+        <div class="dlg-body">
+          <div class="dlg-header">
+            <span id="dlg-speaker" class="dlg-speaker">渔市老板娘 · 阿莲</span>
+            <span id="dlg-role" class="dlg-role">渔获收购与鱼讯</span>
+          </div>
+          <div id="dlg-text" class="dlg-text"></div>
+          <div id="dlg-choices" class="dlg-choices hidden"></div>
+          <div id="dlg-next-hint" class="dlg-next-hint">按 Space / E 或点击继续 ▸</div>
+        </div>
+      </div>
+
+      <!-- Village Shop Modal (Ah Lian's Fish Market Selling / Old Zhou's Tackle Shop!) -->
+      <div id="shop-modal" class="catch-modal-backdrop hidden">
+        <div class="shop-card">
+          <div class="shop-header">
+            <div class="shop-title-wrap">
+              <img id="shop-npc-portrait" class="shop-npc-portrait" src="/assets/portraits/npc_market/happy.png" alt="" />
+              <div>
+                <div id="shop-title" class="shop-title">阿莲渔市收购摊</div>
+                <div id="shop-subtitle" class="shop-subtitle">今日高价收购鱼享受 1.5 倍溢价！</div>
+              </div>
+            </div>
+            <div class="shop-wallet">
+              <img src="/assets/icons/ui/coin.png" alt="贝币" />
+              <b id="shop-coins">120</b>
+              <button id="btn-close-shop" class="icon-close shop-close" aria-label="关闭">×</button>
+            </div>
+          </div>
+          <div id="shop-content" class="shop-content"></div>
+          <div id="shop-footer" class="shop-footer"></div>
+        </div>
       </div>
 
       <!-- World-anchored floating [E] interaction prompt -->
