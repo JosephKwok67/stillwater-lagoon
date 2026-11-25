@@ -3,6 +3,9 @@
 )
 
 $ErrorActionPreference = "Stop"
+$ProgressPreference = "SilentlyContinue"
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $BackupRoot = Join-Path $ProjectRoot "backups"
 New-Item -ItemType Directory -Force -Path $BackupRoot | Out-Null
@@ -27,7 +30,7 @@ $IncludeNames = @(
   ".gitignore"
 )
 
-$TempStage = Join-Path ([IO.Path]::GetTempPath()) ("fishing_backup_" + [Guid]::NewGuid().ToString("N"))
+$TempStage = Join-Path $BackupRoot ("_tmp_stage_" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $TempStage | Out-Null
 
 try {
@@ -38,7 +41,15 @@ try {
     }
   }
 
-  Compress-Archive -Path (Join-Path $TempStage "*") -DestinationPath $ArchivePath -CompressionLevel Optimal -Force
+  if (Test-Path $ArchivePath) {
+    Remove-Item -LiteralPath $ArchivePath -Force
+  }
+  [System.IO.Compression.ZipFile]::CreateFromDirectory(
+    $TempStage,
+    $ArchivePath,
+    [System.IO.Compression.CompressionLevel]::Optimal,
+    $false
+  )
 } finally {
   Remove-Item -LiteralPath $TempStage -Recurse -Force -ErrorAction SilentlyContinue
 }
