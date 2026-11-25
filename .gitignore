@@ -1,0 +1,9 @@
+node_modules/
+dist/
+backups/
+references/
+*.blend1
+*.blend2
+.DS_Store
+Thumbs.db
+*.log

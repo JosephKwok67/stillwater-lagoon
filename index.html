@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>静水 · Stillwater Lagoon</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene-canvas"></canvas>
+
+      <!-- Subtle bottom-left title badge -->
+      <div class="title-overlay">
+        <div class="title-main">静水</div>
+        <div class="title-sub">WASD / 方向键划船 · 25 种生态鱼类自由游弋 · 点击右上「鱼种图鉴」可跟踪观赏每种鱼</div>
+      </div>
+
+      <!-- Compact top-right navigation & look-dev bar -->
+      <div class="hud-top-right">
+        <button id="btn-toggle-fish" class="pill-btn" title="查看水下全部 25 种生物并点击跟踪观察">鱼种图鉴</button>
+        <button id="btn-focus-town" class="pill-btn" title="切换至岸边小镇与自家小屋视角">看岸边小镇</button>
+        <button id="btn-reset-cam" class="pill-btn" title="恢复标准俯视构图">重置视角</button>
+        <button id="btn-toggle-panel" class="pill-btn" title="展开画风与天气参数">画风与天气</button>
+      </div>
+
+      <!-- Collapsible Fish Species Observer Drawer -->
+      <aside id="fish-panel" class="tweak-panel fish-panel hidden">
+        <div class="panel-header">
+          <span>水域图鉴 <em id="fish-total-badge" class="badge-count"></em></span>
+          <button id="btn-close-fish" class="icon-close" aria-label="关闭">×</button>
+        </div>
+        <div class="fish-guide-tip">点击任意鱼种，镜头会自动贴近跟踪游动实景（按 WASD 回到小船）</div>
+        <div id="fish-catalog-list" class="species-list"></div>
+      </aside>
+
+      <!-- Collapsible Look-Dev & Weather Panel -->
+      <aside id="tweak-panel" class="tweak-panel hidden">
+        <div class="panel-header">
+          <span>画风与阳光天气</span>
+          <button id="btn-close-panel" class="icon-close" aria-label="关闭">×</button>
+        </div>
+
+        <div class="section-label">天气与时段预设</div>
+        <div class="weather-grid">
+          <button class="weather-btn active" data-weather="sunny">晴朗午后</button>
+          <button class="weather-btn" data-weather="morning">清晨微光</button>
+          <button class="weather-btn" data-weather="sunset">黄金日落</button>
+          <button class="weather-btn" data-weather="overcast">薄雾微阴</button>
+        </div>
+
+        <label class="control-row">
+          <span>太阳高度</span>
+          <input id="ctrl-sun-elev" type="range" min="10" max="78" step="1" value="44" />
+        </label>
+
+        <label class="control-row">
+          <span>太阳方位</span>
+          <input id="ctrl-sun-azim" type="range" min="-150" max="150" step="1" value="34" />
+        </label>
+
+        <div class="panel-divider"></div>
+
+        <label class="control-row">
+          <span>水体清澈度</span>
+          <input id="ctrl-clarity" type="range" min="0.18" max="0.65" step="0.01" value="0.34" />
+        </label>
+
+        <label class="control-row">
+          <span>波光高光强度</span>
+          <input id="ctrl-sparkle" type="range" min="0.3" max="1.8" step="0.05" value="1.08" />
+        </label>
+
+        <label class="control-row">
+          <span>水底焦散亮度</span>
+          <input id="ctrl-caustics" type="range" min="0.0" max="1.6" step="0.05" value="0.75" />
+        </label>
+
+        <label class="control-row">
+          <span>镜头俯角</span>
+          <input id="ctrl-pitch" type="range" min="14" max="74" step="1" value="52" />
+        </label>
+
+        <label class="control-row">
+          <span>伴游小狗</span>
+          <input id="ctrl-companion" type="checkbox" checked />
+        </label>
+      </aside>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
