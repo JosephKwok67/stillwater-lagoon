@@ -257,9 +257,14 @@ export function createPlayerAvatar() {
     bodyRoot.visible = false;
     glbWrap.clear();
     glbWrap.add(adapter.model);
-    // Keep hand-held fishing rod visible beside character when fishing if GLB has no built-in rod
-    rodGroup.position.set(0.24, 0.72, 0.14);
-    glbWrap.add(rodGroup);
+    // Attach hand-held fishing rod directly onto Rig_ArmR hand when available so rod swings with real arm!
+    if (adapter.hasRig && adapter.rig.armR) {
+      rodGroup.position.set(-0.18, -0.32, 0.06);
+      adapter.rig.armR.add(rodGroup);
+    } else {
+      rodGroup.position.set(-0.24, 0.72, 0.14);
+      glbWrap.add(rodGroup);
+    }
   }
 
   function setRodStyle(rodId) {
@@ -272,39 +277,18 @@ export function createPlayerAvatar() {
 
   /**
    * Drives the character rig for any action in the Action Pack.
-   * Automatically routes to Blender AnimationMixer when `player.glb` is attached!
+   * Drives Blender anatomical `Rig_*` pivots (or AnimationMixer clips) seamlessly when `player.glb` is attached!
    */
   function updateAnimation(action, dt, elapsedTime, params = {}) {
     currentAction = action;
     const clampedDt = Math.min(dt, 0.05);
-
-    if (glbAdapter) {
-      glbAdapter.playAction(action);
-      glbAdapter.update(clampedDt);
-
-      // Gentle procedural root polish for non-baked poses (bed sleep, walk bounce, boat seat)
-      const isSleep = action === 'Sleep_Bed';
-      const isMove = action === 'Walk' || action === 'Run';
-      const isFish = action.startsWith('Fish_');
-      const k = clamp(clampedDt * 12.0, 0, 1);
-      glbWrap.rotation.x = THREE.MathUtils.lerp(glbWrap.rotation.x, isSleep ? Math.PI * 0.5 : 0, k);
-      const bounce = !glbAdapter.hasAnimations && isMove ? Math.abs(Math.sin(elapsedTime * 10.0)) * 0.045 : 0;
-      const seatOff = action === 'Sit_Row' ? -0.14 : 0;
-      glbWrap.position.y = THREE.MathUtils.lerp(glbWrap.position.y, bounce + seatOff, k);
-      rodGroup.visible = isFish;
-      if (isFish) {
-        const pitch = action === 'Fish_Aim' ? -0.65 : action === 'Fish_Reel' ? -0.45 : -0.18;
-        rodGroup.rotation.x = THREE.MathUtils.lerp(rodGroup.rotation.x, pitch, k);
-      }
-      return;
-    }
-
     const k = clamp(clampedDt * 12.0, 0, 1);
 
     interactTimer = Math.max(0, interactTimer - clampedDt);
 
     let targetPelvisY = 0.44;
     let targetBodyY = 0;
+    let targetBodyZ = 0;
     let targetBodyPitch = 0;
     let targetTorsoX = 0;
     let targetTorsoY = 0;
@@ -319,21 +303,23 @@ export function createPlayerAvatar() {
     let rodPitch = -0.25;
 
     if (action === 'Sleep_Bed') {
-      // Cozy horizontal lying pose on the wooden bed, head resting on white pillow, gentle breathing!
+      // Cozy horizontal lying pose FACE-UP on the wooden bed:
+      // -PI/2 around X rotates +Y head onto -Z white pillows and +Z face straight UP (+Y)!
       const breathe = Math.sin(elapsedTime * 1.9);
       targetPelvisY = 0.44;
-      targetBodyY = 0.08 + breathe * 0.014;
-      targetBodyPitch = Math.PI * 0.5; // lie flat back-down facing the ceiling!
+      targetBodyY = 0.11 + breathe * 0.012;
+      targetBodyZ = 0.66;
+      targetBodyPitch = -Math.PI * 0.5;
       targetHeadY = Math.sin(elapsedTime * 0.7) * 0.08;
-      targetHeadX = 0.12;
-      legLX = 0.06;
+      targetHeadX = 0.06;
+      legLX = 0.05;
       legRX = -0.04;
       kneeLX = 0.08;
       kneeRX = 0.12;
-      armLX = -0.35 + breathe * 0.04;
-      armLZ = 0.22;
-      armRX = -0.28 - breathe * 0.04;
-      armRZ = -0.22;
+      armLX = -0.22 + breathe * 0.03;
+      armLZ = 0.14;
+      armRX = -0.18 - breathe * 0.03;
+      armRZ = -0.14;
     } else if (action === 'Sit_Row') {
       const rowPhase = params.rowPhase ?? 0;
       const rowEffort = params.rowEffort ?? 0;
@@ -469,9 +455,46 @@ export function createPlayerAvatar() {
       targetTorsoX += 0.1 * p;
     }
 
-    // Smoothly interpolate all rig joints
+    // Drive Blender GLB anatomical Rig_* pivots when player.glb is attached!
+    if (glbAdapter) {
+      glbAdapter.playAction(action);
+      glbAdapter.update(clampedDt);
+
+      const seatOff = action === 'Sit_Row' || (showRod && params.seated) ? -0.15 : 0;
+      glbWrap.position.y = THREE.MathUtils.lerp(glbWrap.position.y, targetBodyY + seatOff, k);
+      glbWrap.position.z = THREE.MathUtils.lerp(glbWrap.position.z, targetBodyZ, k);
+      glbWrap.rotation.x = THREE.MathUtils.lerp(glbWrap.rotation.x, targetBodyPitch, k);
+
+      if (glbAdapter.hasRig) {
+        const rg = glbAdapter.rig;
+        if (rg.torso) {
+          rg.torso.rotation.x = THREE.MathUtils.lerp(rg.torso.rotation.x, targetTorsoX, k);
+          rg.torso.rotation.y = THREE.MathUtils.lerp(rg.torso.rotation.y, targetTorsoY, k);
+        }
+        if (rg.head) {
+          rg.head.rotation.y = THREE.MathUtils.lerp(rg.head.rotation.y, targetHeadY, k);
+          rg.head.rotation.x = THREE.MathUtils.lerp(rg.head.rotation.x, targetHeadX, k);
+        }
+        if (rg.legL) rg.legL.rotation.x = THREE.MathUtils.lerp(rg.legL.rotation.x, legLX, k);
+        if (rg.legR) rg.legR.rotation.x = THREE.MathUtils.lerp(rg.legR.rotation.x, legRX, k);
+        if (rg.armL) {
+          rg.armL.rotation.x = THREE.MathUtils.lerp(rg.armL.rotation.x, armLX, k);
+          rg.armL.rotation.z = THREE.MathUtils.lerp(rg.armL.rotation.z, (armLZ - 0.12) * 0.65, k);
+        }
+        if (rg.armR) {
+          rg.armR.rotation.x = THREE.MathUtils.lerp(rg.armR.rotation.x, armRX, k);
+          rg.armR.rotation.z = THREE.MathUtils.lerp(rg.armR.rotation.z, (armRZ + 0.12) * 0.65, k);
+        }
+      }
+      rodGroup.visible = showRod;
+      rodGroup.rotation.x = THREE.MathUtils.lerp(rodGroup.rotation.x, rodPitch, k);
+      return;
+    }
+
+    // Smoothly interpolate all procedural fallback rig joints
     pelvis.position.y = THREE.MathUtils.lerp(pelvis.position.y, targetPelvisY, k);
     bodyRoot.position.y = THREE.MathUtils.lerp(bodyRoot.position.y, targetBodyY, k);
+    bodyRoot.position.z = THREE.MathUtils.lerp(bodyRoot.position.z, targetBodyZ, k);
     bodyRoot.rotation.x = THREE.MathUtils.lerp(bodyRoot.rotation.x, targetBodyPitch, k);
     upperBody.rotation.x = THREE.MathUtils.lerp(upperBody.rotation.x, targetTorsoX, k);
     upperBody.rotation.y = THREE.MathUtils.lerp(upperBody.rotation.y, targetTorsoY, k);

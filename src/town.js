@@ -123,6 +123,7 @@ function createIndoorAquarium(timberMat, darkTimberMat) {
 
   // Live 3D swimming fish container
   const fishLayer = new THREE.Group();
+  fishLayer.name = 'Aquarium_FishLayer';
   group.add(fishLayer);
 
   const specById = new Map(FISH_SPECIES.map((s) => [s.id, s]));
@@ -813,7 +814,9 @@ function buildWoodenPier({
     const pz = pierStartZ + t * pierLen;
     const distFromShore = pz - pierStartZ;
     const rampBlend = 1.0 - clamp(distFromShore / rampLen, 0, 1);
-    const py = pierY + (shoreY - pierY) * rampBlend * rampBlend;
+    const rampY = pierY + (shoreY - pierY) * rampBlend * rampBlend;
+    const groundClearY = getWorldElevation(pierX, pz) + 0.055;
+    const py = Math.max(rampY, groundClearY);
 
     const plank = new THREE.Mesh(new THREE.BoxGeometry(pierW, 0.1, 0.25), timberMat);
     plank.position.set(pierX + (rng() - 0.5) * 0.02, py, pz);
@@ -880,7 +883,8 @@ function buildWoodenPier({
     getY: (x, z) => {
       const distFromShore = Math.max(0, z - pierStartZ);
       const rampBlend = 1.0 - clamp(distFromShore / rampLen, 0, 1);
-      return pierY + 0.055 + (shoreY - pierY) * rampBlend * rampBlend;
+      const rampY = pierY + (shoreY - pierY) * rampBlend * rampBlend;
+      return Math.max(rampY, getWorldElevation(pierX, z) + 0.055) + 0.055;
     },
   });
 
@@ -924,7 +928,13 @@ export function buildLakesideTown(scene) {
   const timberMat = new THREE.MeshStandardMaterial({ map: woodTex, color: 0xb9854c, roughness: 0.82 });
   const darkTimberMat = new THREE.MeshStandardMaterial({ color: 0x6f4a28, roughness: 0.86 });
   const stoneMat = new THREE.MeshStandardMaterial({ color: 0x9b9484, roughness: 0.92 });
-  const cobbleMat = new THREE.MeshStandardMaterial({ map: cobbleTex, roughness: 0.92 });
+  const cobbleMat = new THREE.MeshStandardMaterial({
+    map: cobbleTex,
+    roughness: 0.92,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -2,
+  });
 
   const shutterTeal = new THREE.MeshStandardMaterial({ color: 0x3b7b7d, roughness: 0.78 });
   const shutterBlue = new THREE.MeshStandardMaterial({ color: 0x4c6e91, roughness: 0.78 });
@@ -1337,13 +1347,13 @@ export function buildLakesideTown(scene) {
     })
   );
 
-  // Pier 2: Fish Market & Workshop Pier (right in front of Ah Lian's Fish Stall!)
+  // Pier 2: Fish Market & Workshop Pier (clean shoreline start with zero plank poking into the village lane!)
   townGroup.add(
     buildWoodenPier({
       id: 'dock_market',
       nameZh: '渔市集码头',
       pierX: -5.6,
-      pierStartZ: -17.95,
+      pierStartZ: -17.35,
       pierEndZ: -13.1,
       pierY: 0.44,
       pierW: 1.95,
@@ -1523,6 +1533,7 @@ export function buildLakesideTown(scene) {
     [13.8, -17.6],
     [16.2, -16.8],
   ];
+  let stoneIdx = 0;
   for (let i = 0; i < lanePoints.length - 1; i++) {
     const [x0, z0] = lanePoints[i];
     const [x1, z1] = lanePoints[i + 1];
@@ -1535,11 +1546,16 @@ export function buildLakesideTown(scene) {
       if (sy < 0.25) continue;
       // Skip placing loose cobbles inside the solid stone courtyard right in front of player's house
       if (sx > 1.0 && sx < 6.2 && sz > -19.6 && sz < -17.0) continue;
+      // Deterministic micro-height stagger + slightly tighter stone discs -> ZERO coplanar Z-fighting!
+      const yStagger = (stoneIdx % 7) * 0.0055;
+      stoneIdx += 1;
+      const topR = 0.44 + rng() * 0.13;
       const stone = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.56 + rng() * 0.18, 0.64 + rng() * 0.18, 0.08, 9),
+        new THREE.CylinderGeometry(topR, topR + 0.09, 0.14, 9),
         cobbleMat
       );
-      stone.position.set(sx, sy - 0.015, sz);
+      stone.position.set(sx, sy - 0.018 + yStagger, sz);
+      stone.rotation.y = rng() * Math.PI;
       stone.receiveShadow = true;
       townGroup.add(stone);
     }
@@ -1818,9 +1834,23 @@ export function buildLakesideTown(scene) {
       if (glbData.anchors?.aquarium) {
         const aqPos = new THREE.Vector3();
         glbData.anchors.aquarium.getWorldPosition(aqPos);
-        b.worldAnchors.aquarium = aqPos;
+        // Anchor_Aquarium sits at floor base so swimming fish stay aligned inside the glass tank;
+        // aim worldAnchors.aquarium (+1.0m up) squarely at the glowing glass water center for camera & [E] prompt!
+        b.worldAnchors.aquarium = aqPos.clone().add(new THREE.Vector3(0, 1.0, 0));
         if (b.aquarium) {
           b.aquarium.group.position.copy(glbData.anchors.aquarium.position);
+          // Hide procedural tank geometry when Blender GLB provides its own handcrafted glass aquarium cabinet,
+          // keeping ONLY live 3D swimming fish & glowing aqua point light inside the Blender tank!
+          let hasBlenderTank = false;
+          glbData.model.traverse((obj) => {
+            if (/aq_cabinet|aq_waterglow/i.test(obj.name || '')) hasBlenderTank = true;
+          });
+          if (hasBlenderTank) {
+            for (const ch of b.aquarium.group.children) {
+              if (ch.name === 'Aquarium_FishLayer' || ch.isLight) continue;
+              ch.visible = false;
+            }
+          }
         }
       }
       if (glbData.anchors?.bed) {

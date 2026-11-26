@@ -4,6 +4,26 @@
 
 ---
 
+## [v0.7.1 · 场景概念] - 2026-11-26（泻湖渔村的一天）
+
+- 新增[渔村四格分镜](../art_pipeline/concepts/storyboards/stillwater_fishing_village_storyboard.png)。山坡远景和船头视角交代渔市、小屋与码头的位置，鱼摊和栈桥近景供居民互动与垂钓镜头参考。
+
+## [v0.7.1 · Blender 首版] - 2026-11-26（角色与无缝室内静态模型）
+- **house_artisan**　已保存 `art_pipeline/blender/house_artisan.blend` 和 BaseColor 贴图，导出 `public/assets/models/environment/house_artisan.glb`。7,116 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **house_player**　已保存 `art_pipeline/blender/house_player.blend` 和 BaseColor 贴图，导出 `public/assets/models/environment/house_player.glb`。6,663 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **house_neighbor_east**　已保存 `art_pipeline/blender/house_neighbor_east.blend` 和 BaseColor 贴图，导出 `public/assets/models/environment/house_neighbor_east.glb`。7,354 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **dog**　已保存 `art_pipeline/blender/dog.blend` 和 BaseColor 贴图，导出 `public/assets/models/characters/dog.glb`。2,707 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **player**　已保存 `art_pipeline/blender/player.blend` 和 BaseColor 贴图，导出 `public/assets/models/characters/player.glb`。4,328 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **npc_lighthouse**　已保存 `art_pipeline/blender/npc_lighthouse.blend` 和 BaseColor 贴图，导出 `public/assets/models/characters/npc_lighthouse.glb`。4,088 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **npc_artisan**　已保存 `art_pipeline/blender/npc_artisan.blend` 和 BaseColor 贴图，导出 `public/assets/models/characters/npc_artisan.glb`。4,348 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+- **npc_market**　已保存 `art_pipeline/blender/npc_market.blend` 和 BaseColor 贴图，导出 `public/assets/models/characters/npc_market.glb`。3,955 tris，单张内嵌图集，通过 GLB 尺寸、材质和节点检查，对应 manifest 开关已启用。
+
+- **交付状态**　静态模型先验收外观，骨骼与动画待补。BaseColor 为均匀色域的 1024 × 1024 手绘感颜料图集，实时光照负责明暗。
+- **评审来源**　桌面 Blender 经本地 MCP 制作，逐件调用 `look` 检查多角度；评审图与文件指标在 `art_pipeline/staging/blender_preview/`。
+- **性能与构建**　五个角色各合并为一个网格。房屋按功能节点与材质合并为 5～6 个网格。八个 GLB 的纹理均已内嵌，独立目录 Vite 生产构建通过，构建副本与源文件 SHA-256 全部一致。
+- **锚点兼容**　家用鱼缸的 `Anchor_Aquarium` 使用父偏移节点，世界位置落在缸体中央，局部位置保留现有加载器所需的旧鱼缸根节点位置，以兼容其同时读取世界位置和局部位置的行为。
+- **外观评审**　[五位角色](../art_pipeline/staging/blender_preview/角色评审.jpg)与[三栋房屋室内](../art_pipeline/staging/blender_preview/室内评审.jpg)为首版静态模型。贴图采用程序生成的颜料色块与织物纹理。骨骼动作、游戏内实机外观与进出屋操作待后续验收。
+
 ## [v0.7.1] - 2026-11-26（Blender `.glb` 零代码自动热替换加载器与 Codex 3D 精模任务书）
 - **Git 里程碑记号**：`v0.7.1-glb-hotswap`
 - **Blender `.glb` 热替换管线（`src/core/glbLoader.js`、`public/assets/models/manifest.json`）**：

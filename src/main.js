@@ -228,9 +228,9 @@ function setCameraMode(mode, extraId = null) {
     camState.targetPitchDeg = 56;
     if (btnTown) btnTown.textContent = '回到主角';
   } else if (mode === 'aquarium') {
-    camState.targetDistance = 2.35;
-    camState.targetPitchDeg = 10;
-    camState.targetYawDeg = 3;
+    camState.targetDistance = 2.68;
+    camState.targetPitchDeg = 8;
+    camState.targetYawDeg = 0;
     if (btnTown) btnTown.textContent = '看岸边小镇';
   } else if (mode === 'dialogue') {
     camState.targetDistance = 9.4;
@@ -1704,8 +1704,9 @@ function animate() {
     }
   } else if (camState.mode === 'aquarium' && town.playerHome?.worldAnchors?.aquarium) {
     const aq = town.playerHome.worldAnchors.aquarium;
-    desiredTargetX = aq.x;
-    desiredTargetY = aq.y + 0.02;
+    // Slight +X target offset shifts the glass tank left-of-center so it sits cleanly clear of the right UI drawer!
+    desiredTargetX = aq.x + 0.28;
+    desiredTargetY = aq.y;
     desiredTargetZ = aq.z;
   } else if (camState.mode === 'dialogue' && camState.focusNpcId) {
     const npc = townNpcs.getById(camState.focusNpcId);

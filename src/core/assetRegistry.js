@@ -19,7 +19,7 @@ export const ROD_CATALOG = [
   {
     id: 'rod_bamboo',
     nameZh: '初始竹竿',
-    icon: '/assets/icons/rods/rod_bamboo.png',
+    icon: './assets/icons/rods/rod_bamboo.png',
     castRange: 6.4,
     power: 1.0,
     price: 0,
@@ -28,7 +28,7 @@ export const ROD_CATALOG = [
   {
     id: 'rod_maple',
     nameZh: '枫木溪流竿',
-    icon: '/assets/icons/rods/rod_maple.png',
+    icon: './assets/icons/rods/rod_maple.png',
     castRange: 8.2,
     power: 1.35,
     price: 180,
@@ -37,7 +37,7 @@ export const ROD_CATALOG = [
   {
     id: 'rod_ocean',
     nameZh: '远洋海钓竿',
-    icon: '/assets/icons/rods/rod_ocean.png',
+    icon: './assets/icons/rods/rod_ocean.png',
     castRange: 10.6,
     power: 1.85,
     price: 520,
@@ -46,7 +46,7 @@ export const ROD_CATALOG = [
   {
     id: 'rod_starlight',
     nameZh: '静水秘制竿',
-    icon: '/assets/icons/rods/rod_starlight.png',
+    icon: './assets/icons/rods/rod_starlight.png',
     castRange: 11.4,
     power: 2.1,
     price: 980,
@@ -58,64 +58,64 @@ export const BAIT_CATALOG = [
   {
     id: 'bait_dough',
     nameZh: '面团香饵',
-    icon: '/assets/icons/baits/bait_dough.png',
+    icon: './assets/icons/baits/bait_dough.png',
     price: 6,
     targetHint: '淡水鱼 / 锦鲤 / 小型群游鱼',
   },
   {
     id: 'bait_shrimp',
     nameZh: '鲜甜虾仁',
-    icon: '/assets/icons/baits/bait_shrimp.png',
+    icon: './assets/icons/baits/bait_shrimp.png',
     price: 14,
     targetHint: '礁石鲷鱼 / 底栖鱼 / 软丝鱿鱼',
   },
   {
     id: 'bait_lure',
     nameZh: '彩绘拟饵',
-    icon: '/assets/icons/baits/bait_lure.png',
+    icon: './assets/icons/baits/bait_lure.png',
     price: 26,
     targetHint: '远洋掠食鱼 / 海鲈 / 黄鳍金枪鱼',
   },
   {
     id: 'bait_glow',
     nameZh: '夜光诱饵',
-    icon: '/assets/icons/baits/bait_glow.png',
+    icon: './assets/icons/baits/bait_glow.png',
     price: 34,
     targetHint: '日落深水 / 银带鱼 / 软丝鱿鱼 / 稀有种',
   },
 ];
 
 export const UI_ICONS = {
-  coin: '/assets/icons/ui/coin.png',
-  echoLeaf: '/assets/icons/ui/echo_leaf.png',
-  basket: '/assets/icons/ui/basket.png',
-  bobber: '/assets/icons/ui/bobber.png',
+  coin: './assets/icons/ui/coin.png',
+  echoLeaf: './assets/icons/ui/echo_leaf.png',
+  basket: './assets/icons/ui/basket.png',
+  bobber: './assets/icons/ui/bobber.png',
 };
 
 export const PORTRAITS = {
   player: {
-    neutral: '/assets/portraits/player/neutral.png',
-    happy: '/assets/portraits/player/happy.png',
-    surprised: '/assets/portraits/player/surprised.png',
+    neutral: './assets/portraits/player/neutral.png',
+    happy: './assets/portraits/player/happy.png',
+    surprised: './assets/portraits/player/surprised.png',
   },
   dog: {
-    happy: '/assets/portraits/dog/happy.png',
-    excited: '/assets/portraits/dog/excited.png',
+    happy: './assets/portraits/dog/happy.png',
+    excited: './assets/portraits/dog/excited.png',
   },
   npc_market: {
-    neutral: '/assets/portraits/npc_market/neutral.png',
-    happy: '/assets/portraits/npc_market/happy.png',
-    surprised: '/assets/portraits/npc_market/surprised.png',
+    neutral: './assets/portraits/npc_market/neutral.png',
+    happy: './assets/portraits/npc_market/happy.png',
+    surprised: './assets/portraits/npc_market/surprised.png',
   },
   npc_artisan: {
-    neutral: '/assets/portraits/npc_artisan/neutral.png',
-    happy: '/assets/portraits/npc_artisan/happy.png',
-    thinking: '/assets/portraits/npc_artisan/thinking.png',
+    neutral: './assets/portraits/npc_artisan/neutral.png',
+    happy: './assets/portraits/npc_artisan/happy.png',
+    thinking: './assets/portraits/npc_artisan/thinking.png',
   },
   npc_lighthouse: {
-    neutral: '/assets/portraits/npc_lighthouse/neutral.png',
-    happy: '/assets/portraits/npc_lighthouse/happy.png',
-    mysterious: '/assets/portraits/npc_lighthouse/mysterious.png',
+    neutral: './assets/portraits/npc_lighthouse/neutral.png',
+    happy: './assets/portraits/npc_lighthouse/happy.png',
+    mysterious: './assets/portraits/npc_lighthouse/mysterious.png',
   },
 };
 
@@ -125,16 +125,16 @@ export const PORTRAITS = {
  */
 export const MODEL_PATHS = {
   characters: {
-    player: '/assets/models/characters/player.glb',
-    dog: '/assets/models/characters/dog.glb',
-    npc_market: '/assets/models/characters/npc_market.glb',
-    npc_artisan: '/assets/models/characters/npc_artisan.glb',
-    npc_lighthouse: '/assets/models/characters/npc_lighthouse.glb',
+    player: './assets/models/characters/player.glb',
+    dog: './assets/models/characters/dog.glb',
+    npc_market: './assets/models/characters/npc_market.glb',
+    npc_artisan: './assets/models/characters/npc_artisan.glb',
+    npc_lighthouse: './assets/models/characters/npc_lighthouse.glb',
   },
   buildings: {
-    player_home: '/assets/models/environment/house_player.glb',
-    artisan_workshop: '/assets/models/environment/house_artisan.glb',
-    neighbor_east: '/assets/models/environment/house_neighbor_east.glb',
+    player_home: './assets/models/environment/house_player.glb',
+    artisan_workshop: './assets/models/environment/house_artisan.glb',
+    neighbor_east: './assets/models/environment/house_neighbor_east.glb',
   },
 };
 
@@ -369,7 +369,7 @@ export function syncDeliveredFishIcons(ids) {
 
 export function getFishIconUrl(speciesId, spec = null) {
   if (DELIVERED_FISH_ICONS.has(speciesId)) {
-    return `/assets/icons/fish/${speciesId}.png`;
+    return `./assets/icons/fish/${speciesId}.png`;
   }
   if (spec) {
     return buildPaintedFishFallback(spec);

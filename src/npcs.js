@@ -215,8 +215,9 @@ export function buildTownNpcs(scene, town) {
     ? workshop.toWorld(0.15, workshop.dims.floorY + 0.05, -0.35)
     : new THREE.Vector3(-4.8, getWorldElevation(-4.8, -22.2), -22.2);
 
-  const marketX = -6.0;
-  const marketZ = -17.95;
+  // Stand cleanly beside the Fish Market stall on flat village lane (clear of market pier planks!)
+  const marketX = -5.25;
+  const marketZ = -18.85;
   const marketPos = new THREE.Vector3(marketX, town.getWalkableElevation(marketX, marketZ), marketZ);
 
   const lhNpcX = 15.55;
@@ -309,9 +310,47 @@ export function buildTownNpcs(scene, town) {
         if (n.glbAdapter) {
           n.glbAdapter.playAction(n.talking ? 'Talk' : near ? 'Wave' : 'Idle');
           n.glbAdapter.update(clampedDt);
-          // Subtle liveliness even if Blender model starts as a static sculpt before rigging!
-          if (!n.glbAdapter.hasAnimations) {
-            n.glbAdapter.model.position.y = Math.sin(elapsedTime * 2.4 + n.phase) * 0.014;
+          const breathe = Math.sin(elapsedTime * 2.2 + n.phase);
+          if (n.glbAdapter.hasRig) {
+            const rg = n.glbAdapter.rig;
+            const k = clamp(clampedDt * 8.0, 0, 1);
+            if (rg.torso) {
+              rg.torso.rotation.x = THREE.MathUtils.lerp(rg.torso.rotation.x, breathe * 0.025, k);
+            }
+            if (rg.head) {
+              const targetHX = n.talking ? Math.sin(elapsedTime * 7.2) * 0.09 : breathe * 0.03;
+              const targetHY = !near ? Math.sin(elapsedTime * 0.75 + n.phase) * 0.2 : 0;
+              rg.head.rotation.x = THREE.MathUtils.lerp(rg.head.rotation.x, targetHX, k);
+              rg.head.rotation.y = THREE.MathUtils.lerp(rg.head.rotation.y, targetHY, k);
+            }
+            if (n.id === 'npc_lighthouse') {
+              // Right hand gently holds & sways the glowing brass storm lantern; left hand waves!
+              if (rg.armR) {
+                rg.armR.rotation.x = THREE.MathUtils.lerp(rg.armR.rotation.x, -0.32 + breathe * 0.04, k);
+              }
+              if (rg.armL) {
+                const waveL = n.talking
+                  ? -0.42 + Math.sin(elapsedTime * 6.0) * 0.2
+                  : near
+                    ? -1.65 + Math.sin(elapsedTime * 7.2) * 0.3
+                    : breathe * 0.04;
+                rg.armL.rotation.x = THREE.MathUtils.lerp(rg.armL.rotation.x, waveL, k);
+              }
+            } else {
+              if (rg.armR) {
+                const waveR = n.talking
+                  ? -0.45 + Math.sin(elapsedTime * 6.8) * 0.22
+                  : near
+                    ? -1.85 + Math.sin(elapsedTime * 7.8) * 0.32
+                    : breathe * 0.04;
+                rg.armR.rotation.x = THREE.MathUtils.lerp(rg.armR.rotation.x, waveR, k);
+              }
+              if (rg.armL) {
+                rg.armL.rotation.x = THREE.MathUtils.lerp(rg.armL.rotation.x, -breathe * 0.04, k);
+              }
+            }
+          } else if (!n.glbAdapter.hasAnimations) {
+            n.glbAdapter.model.position.y = Math.sin(elapsedTime * 2.4 + n.phase) * 0.01;
           }
           continue;
         }

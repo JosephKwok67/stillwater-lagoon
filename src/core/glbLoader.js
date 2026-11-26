@@ -9,7 +9,7 @@ const loader = new GLTFLoader();
  */
 export async function fetchAssetManifest() {
   try {
-    const res = await fetch('/assets/models/manifest.json', { cache: 'no-cache' });
+    const res = await fetch('./assets/models/manifest.json', { cache: 'no-cache' });
     if (!res.ok) return null;
     return await res.json();
   } catch {
@@ -29,8 +29,16 @@ function configureLoadedModel(root) {
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
       for (const m of mats) {
         if (m.isMeshStandardMaterial) {
-          m.roughness = Math.max(m.roughness ?? 0.8, 0.72);
-          m.metalness = Math.min(m.metalness ?? 0.0, 0.15);
+          const isGlass = m.transparent || (typeof m.opacity === 'number' && m.opacity < 0.99);
+          const isGlossyEye = /eye|catchlight|brass|gold|metal|glass|aqua/i.test(m.name || '');
+          if (isGlass) {
+            m.transparent = true;
+            m.depthWrite = false;
+            m.roughness = Math.min(m.roughness ?? 0.18, 0.22);
+          } else if (!isGlossyEye) {
+            m.roughness = Math.max(m.roughness ?? 0.82, 0.76);
+            m.metalness = Math.min(m.metalness ?? 0.0, 0.08);
+          }
         }
       }
     }
@@ -111,9 +119,32 @@ export function loadCharacterGlb(url, { targetHeight = 1.24, isQuadruped = false
           return true;
         }
 
+        // Extract standardized anatomical Rig_* pivot nodes exported by Antigravity Blender pipeline
+        // so the live 60fps Action Pack (Walk, Run, Sit_Row, Fish_*, Sleep_Bed, Wave, Talk, Dog Trot/Swim/Wag)
+        // drives real baked GLB limbs cleanly!
+        const rig = {};
+        model.traverse((obj) => {
+          const n = obj.name || '';
+          if (n === 'Rig_Torso') rig.torso = obj;
+          else if (n === 'Rig_Head') rig.head = obj;
+          else if (n === 'Rig_ArmL') rig.armL = obj;
+          else if (n === 'Rig_ArmR') rig.armR = obj;
+          else if (n === 'Rig_LegL') rig.legL = obj;
+          else if (n === 'Rig_LegR') rig.legR = obj;
+          else if (n === 'Rig_Body') rig.body = obj;
+          else if (n === 'Rig_Tail') rig.tail = obj;
+          else if (n === 'Rig_PawFL') rig.pawFL = obj;
+          else if (n === 'Rig_PawFR') rig.pawFR = obj;
+          else if (n === 'Rig_PawBL') rig.pawBL = obj;
+          else if (n === 'Rig_PawBR') rig.pawBR = obj;
+        });
+        const hasRig = Boolean(rig.torso || rig.body);
+
         resolve({
           model,
           mixer,
+          rig,
+          hasRig,
           hasAnimations: actions.size > 0,
           playAction,
           update(dt) {

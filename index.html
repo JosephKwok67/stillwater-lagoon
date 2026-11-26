@@ -13,7 +13,7 @@
       <!-- Top-left cozy player status card featuring Codex portraits & UI icons -->
       <div class="hud-top-left">
         <div class="player-badge">
-          <img class="player-avatar-img" src="/assets/portraits/player/neutral.png" alt="草帽垂钓者" />
+          <img class="player-avatar-img" src="./assets/portraits/player/neutral.png" alt="草帽垂钓者" />
           <div class="player-badge-meta">
             <div class="player-badge-row">
               <span id="hud-day-badge" class="day-pill">第 1 天</span>
@@ -21,15 +21,15 @@
             </div>
             <div class="resource-row">
               <span class="res-chip" title="渔村贝币">
-                <img src="/assets/icons/ui/coin.png" alt="贝币" />
+                <img src="./assets/icons/ui/coin.png" alt="贝币" />
                 <b id="hud-coins">120</b>
               </span>
               <span class="res-chip" title="放生回响灵气">
-                <img src="/assets/icons/ui/echo_leaf.png" alt="回响" />
+                <img src="./assets/icons/ui/echo_leaf.png" alt="回响" />
                 <b id="hud-echo">0</b>
               </span>
               <button id="btn-open-basket" class="res-chip res-chip-btn" title="打开随身鱼护（快捷键 B）">
-                <img src="/assets/icons/ui/basket.png" alt="鱼护" />
+                <img src="./assets/icons/ui/basket.png" alt="鱼护" />
                 <b id="hud-basket">0</b>
               </button>
             </div>
@@ -55,7 +55,7 @@
       <!-- Storybook NPC Subtitle Dialogue Box with Codex High-Res Portrait -->
       <div id="dialogue-box" class="dialogue-box hidden">
         <div class="dlg-portrait-wrap">
-          <img id="dlg-portrait" class="dlg-portrait" src="/assets/portraits/npc_market/neutral.png" alt="" />
+          <img id="dlg-portrait" class="dlg-portrait" src="./assets/portraits/npc_market/neutral.png" alt="" />
         </div>
         <div class="dlg-body">
           <div class="dlg-header">
@@ -73,14 +73,14 @@
         <div class="shop-card">
           <div class="shop-header">
             <div class="shop-title-wrap">
-              <img id="shop-npc-portrait" class="shop-npc-portrait" src="/assets/portraits/npc_market/happy.png" alt="" />
+              <img id="shop-npc-portrait" class="shop-npc-portrait" src="./assets/portraits/npc_market/happy.png" alt="" />
               <div>
                 <div id="shop-title" class="shop-title">阿莲渔市收购摊</div>
                 <div id="shop-subtitle" class="shop-subtitle">今日高价收购鱼享受 1.5 倍溢价！</div>
               </div>
             </div>
             <div class="shop-wallet">
-              <img src="/assets/icons/ui/coin.png" alt="贝币" />
+              <img src="./assets/icons/ui/coin.png" alt="贝币" />
               <b id="shop-coins">120</b>
               <button id="btn-close-shop" class="icon-close shop-close" aria-label="关闭">×</button>
             </div>
@@ -104,7 +104,7 @@
 
       <!-- Cozy storybook toast notification with Codex portrait -->
       <div id="toast-banner" class="toast-banner hidden">
-        <img id="toast-portrait" class="toast-portrait" src="/assets/portraits/player/neutral.png" alt="" />
+        <img id="toast-portrait" class="toast-portrait" src="./assets/portraits/player/neutral.png" alt="" />
         <span id="toast-msg" class="toast-msg"></span>
       </div>
 
@@ -139,7 +139,7 @@
         <div class="catch-card">
           <div class="catch-card-top">
             <div id="catch-badges" class="catch-badges"></div>
-            <img class="catch-dog-cheer" src="/assets/portraits/dog/excited.png" alt="小狗欢呼" />
+            <img class="catch-dog-cheer" src="./assets/portraits/dog/excited.png" alt="小狗欢呼" />
           </div>
           <div class="catch-visual">
             <img id="catch-fish-img" class="catch-fish-img hidden" src="" alt="" />
@@ -149,11 +149,11 @@
           <div id="catch-fish-meta" class="catch-fish-meta">体长 42 cm · 普通 · 约 95 贝币</div>
           <div class="catch-actions">
             <button id="btn-catch-keep" class="catch-btn catch-btn-primary" type="button">
-              <img src="/assets/icons/ui/basket.png" alt="" />
+              <img src="./assets/icons/ui/basket.png" alt="" />
               <span>收入随身鱼护 <em>1 / Enter</em></span>
             </button>
             <button id="btn-catch-release" class="catch-btn catch-btn-secondary" type="button">
-              <img src="/assets/icons/ui/echo_leaf.png" alt="" />
+              <img src="./assets/icons/ui/echo_leaf.png" alt="" />
               <span id="catch-release-label">温柔放生 (+10) <em>2</em></span>
             </button>
           </div>
@@ -163,15 +163,15 @@
       <!-- Bottom-center compact gear & action dock -->
       <div class="hud-bottom-dock">
         <button id="btn-cycle-rod" class="gear-btn" title="点击切换鱼竿">
-          <img id="btn-rod-img" src="/assets/icons/rods/rod_bamboo.png" alt="鱼竿" />
+          <img id="btn-rod-img" src="./assets/icons/rods/rod_bamboo.png" alt="鱼竿" />
           <span id="btn-rod-name">初始竹竿</span>
         </button>
         <button id="btn-cycle-bait" class="gear-btn" title="点击切换鱼饵">
-          <img id="btn-bait-img" src="/assets/icons/baits/bait_dough.png" alt="鱼饵" />
+          <img id="btn-bait-img" src="./assets/icons/baits/bait_dough.png" alt="鱼饵" />
           <span id="btn-bait-name">面团香饵</span>
         </button>
         <button id="btn-cast-action" class="gear-btn gear-btn-accent" title="按住蓄力松开抛竿，咬钩后按住收线">
-          <img src="/assets/icons/ui/bobber.png" alt="浮标" />
+          <img src="./assets/icons/ui/bobber.png" alt="浮标" />
           <span id="btn-cast-label">蓄力抛竿 <em>Space</em></span>
         </button>
         <button id="btn-warp-home" class="gear-btn gear-btn-subtle" title="一键回到自家小屋码头">

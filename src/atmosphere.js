@@ -206,15 +206,22 @@ export function createAtmosphereSystem(scene, renderer) {
   sunLight.shadow.mapSize.set(2048, 2048);
   sunLight.shadow.camera.near = 2;
   sunLight.shadow.camera.far = 110;
-  const shadowBound = 32;
+  const shadowBound = 34;
   sunLight.shadow.camera.left = -shadowBound;
   sunLight.shadow.camera.right = shadowBound;
   sunLight.shadow.camera.top = shadowBound;
   sunLight.shadow.camera.bottom = -shadowBound;
-  sunLight.shadow.bias = -0.0005;
-  sunLight.shadow.normalBias = 0.03;
+  sunLight.shadow.bias = -0.0004;
+  sunLight.shadow.normalBias = 0.035;
   scene.add(sunLight);
   scene.add(sunLight.target);
+
+  // Light-space basis vectors for exact shadow-map texel snapping (eliminates all shadow crawling/shimmering!)
+  const _worldUp = new THREE.Vector3(0, 1, 0);
+  const _lightRight = new THREE.Vector3();
+  const _lightUp = new THREE.Vector3();
+  const _snappedTarget = new THREE.Vector3();
+  const shadowTexelSize = (shadowBound * 2) / 2048;
 
   // Soft counter-fill directional light
   const fillLight = new THREE.DirectionalLight(
@@ -336,12 +343,28 @@ export function createAtmosphereSystem(scene, renderer) {
       skyUniforms.uTime.value = elapsedTime;
       if (focusTarget) {
         skyDome.position.set(focusTarget.x, 0, focusTarget.z);
+        // Quantize shadow target in light-space to exact shadow texel increments while staying on y=0 -> ZERO shadow shimmering!
+        _lightRight.crossVectors(_worldUp, state.sunDir).normalize();
+        _lightUp.crossVectors(state.sunDir, _lightRight).normalize();
+        const rawU = focusTarget.x * _lightRight.x + focusTarget.z * _lightRight.z;
+        const rawV = focusTarget.x * _lightUp.x + focusTarget.z * _lightUp.z;
+        const snapU = Math.round(rawU / shadowTexelSize) * shadowTexelSize;
+        const snapV = Math.round(rawV / shadowTexelSize) * shadowTexelSize;
+        // Shift purely along sunDir so _snappedTarget.y === 0 without disturbing (snapU, snapV)!
+        const w = -(snapV * _lightUp.y) / Math.max(0.08, state.sunDir.y);
+        _snappedTarget
+          .copy(_lightRight)
+          .multiplyScalar(snapU)
+          .addScaledVector(_lightUp, snapV)
+          .addScaledVector(state.sunDir, w);
+
+        const sunDist = 54;
         sunLight.position.set(
-          focusTarget.x + state.sunDir.x * 46,
-          Math.max(8, state.sunDir.y * 46),
-          focusTarget.z + state.sunDir.z * 46
+          _snappedTarget.x + state.sunDir.x * sunDist,
+          _snappedTarget.y + state.sunDir.y * sunDist,
+          _snappedTarget.z + state.sunDir.z * sunDist
         );
-        sunLight.target.position.set(focusTarget.x, 0, focusTarget.z);
+        sunLight.target.position.copy(_snappedTarget);
         sunLight.target.updateMatrixWorld();
       }
     },

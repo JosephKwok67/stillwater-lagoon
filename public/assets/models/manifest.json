@@ -1,16 +1,16 @@
 {
   "note": "Codex 导出对应 .glb 到 public/assets/models/ 后，将下方对应键改为 true，游戏刷新页面即会自动无缝替换程序白模，无需修改 src/ 代码！",
   "characters": {
-    "player": false,
-    "dog": false,
-    "npc_market": false,
-    "npc_artisan": false,
-    "npc_lighthouse": false
+    "player": true,
+    "dog": true,
+    "npc_market": true,
+    "npc_artisan": true,
+    "npc_lighthouse": true
   },
   "buildings": {
-    "player_home": false,
-    "artisan_workshop": false,
-    "neighbor_east": false
+    "player_home": true,
+    "artisan_workshop": true,
+    "neighbor_east": true
   },
   "fishIconsDelivered": [
     "stillwater_koi",

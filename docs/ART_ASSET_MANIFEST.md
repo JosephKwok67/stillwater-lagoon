@@ -9,11 +9,11 @@
 
 | ID | 角色名称 | 游戏定位 | 概念三视图路径 (`art_pipeline/concepts/...`) | 2D 对话立绘目录 (`public/assets/portraits/...`) | 3D 模型路径 (`public/assets/models/characters/...`) | 状态 |
 |---|---|---|---|---|---|---|
-| `player` | 草帽垂钓者（主角） | 划船/走路/钓鱼主角 | `characters/player_turnaround.png` | `player/neutral.png`, `happy.png`, `surprised.png` | `player.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[ ]` |
-| `dog` | 伴游小狗（渔夫伙伴） | 伴游/上岸跟宠/起鱼欢呼 | `characters/dog_turnaround.png` | `dog/happy.png`, `excited.png` | `dog.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[ ]` |
-| `npc_market` | 渔市老板娘（阿莲） | 红白条纹摊位：收鱼/鱼讯/悬赏 | `npcs/npc_market_turnaround.png` | `npc_market/neutral.png`, `happy.png`, `surprised.png` | `npc_market.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[ ]` |
-| `npc_artisan` | 渔具工匠（老周） | 小镇木屋工坊：卖竿/买饵/炼竿 | `npcs/npc_artisan_turnaround.png` | `npc_artisan/neutral.png`, `happy.png`, `thinking.png` | `npc_artisan.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[ ]` |
-| `npc_lighthouse` | 灯塔守望者（海伯） | 东侧红白灯塔：天气潮汐/巨物传说 | `npcs/npc_lighthouse_turnaround.png` | `npc_lighthouse/neutral.png`, `happy.png`, `mysterious.png` | `npc_lighthouse.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[ ]` |
+| `player` | 草帽垂钓者（主角） | 划船/走路/钓鱼主角 | `characters/player_turnaround.png` | `player/neutral.png`, `happy.png`, `surprised.png` | `player.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[x]` |
+| `dog` | 伴游小狗（渔夫伙伴） | 伴游/上岸跟宠/起鱼欢呼 | `characters/dog_turnaround.png` | `dog/happy.png`, `excited.png` | `dog.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[x]` |
+| `npc_market` | 渔市老板娘（阿莲） | 红白条纹摊位：收鱼/鱼讯/悬赏 | `npcs/npc_market_turnaround.png` | `npc_market/neutral.png`, `happy.png`, `surprised.png` | `npc_market.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[x]` |
+| `npc_artisan` | 渔具工匠（老周） | 小镇木屋工坊：卖竿/买饵/炼竿 | `npcs/npc_artisan_turnaround.png` | `npc_artisan/neutral.png`, `happy.png`, `thinking.png` | `npc_artisan.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[x]` |
+| `npc_lighthouse` | 灯塔守望者（海伯） | 东侧红白灯塔：天气潮汐/巨物传说 | `npcs/npc_lighthouse_turnaround.png` | `npc_lighthouse/neutral.png`, `happy.png`, `mysterious.png` | `npc_lighthouse.glb` | 三视图 `[x]` · 立绘 `[x]` · GLB `[x]` |
 
 ### 3D 角色标准规格（Blender 导出 `.glb` 必守规范）
 - **坐标系与朝向**：`+Y` 向上，人物正面朝 `+Z`（或 `-Z` 并在日志注明），原点 `(0, 0, 0)` 位于**双脚脚底中心**。
@@ -89,9 +89,9 @@
 
 | 精确文件名 (`public/assets/models/environment/`) | 建筑名称 | 占地尺寸 (`宽 X × 深 Z × 墙高 Y`) | 门洞位置 (`+Z` 朝前) | 室内核心交互家具 | 状态 |
 |---|---|---|---|---|---|
-| `house_player.glb` | 玩家自家临水红顶小屋 | `4.20m × 3.40m × 1.92m` | 门宽 `0.94m × 高 1.24m`，中心 `X = -0.68m` | 后右墙大生态鱼缸（`1.82m` 宽）、后左墙木床、圆地毯、台灯 | `[ ]` 待制作 |
-| `house_artisan.glb` | 老周渔具工坊 | `3.55m × 2.90m × 1.82m` | 门宽 `0.94m × 高 1.24m`，中心 `X = 0.00m` | 后墙制竿工作台、左侧 4 支鱼竿陈列架、线轴、木箱 | `[ ]` 待制作 |
-| `house_neighbor_east.glb` | 东岸木屋 | `3.25m × 2.75m × 1.76m` | 门宽 `0.94m × 高 1.24m`，中心 `X = 0.00m` | 圆桌、木凳、茶壶、书架、编织地毯 | `[ ]` 待制作 |
+| `house_player.glb` | 玩家自家临水红顶小屋 | `4.20m × 3.40m × 1.92m` | 门宽 `0.94m × 高 1.24m`，中心 `X = -0.68m` | 后右墙大生态鱼缸（`1.82m` 宽）、后左墙木床、圆地毯、台灯 | `[x]` |
+| `house_artisan.glb` | 老周渔具工坊 | `3.55m × 2.90m × 1.82m` | 门宽 `0.94m × 高 1.24m`，中心 `X = 0.00m` | 后墙制竿工作台、左侧 4 支鱼竿陈列架、线轴、木箱 | `[x]` |
+| `house_neighbor_east.glb` | 东岸木屋 | `3.25m × 2.75m × 1.76m` | 门宽 `0.94m × 高 1.24m`，中心 `X = 0.00m` | 圆桌、木凳、茶壶、书架、编织地毯 | `[x]` |
 
 ### Blender 场景层级与材质硬标准（用于无缝门与屋顶渐隐）
 1. **坐标与朝向**：`+Y` 向上，大门正面朝 `+Z`，原点 `(0, 0, 0)` 位于建筑底面中心，室内地板顶面高度 `Y = +0.14m`，墙体厚度 `0.16m`。
@@ -102,3 +102,7 @@
    - `Interior_Floor` & `Interior_Props`：室内木地板、地毯、床、鱼缸柜、工作台等家具摆件。
    - 空锚点（Empty）：`Anchor_Aquarium`（鱼缸中心）、`Anchor_Bed`（床交互点）、`Anchor_Workbench`（工作台交互点）。
 3. **面数与贴图**：单栋含室内控制在 `3,000 ~ 7,500 tris`，沿用哑光水粉手绘感（`Roughness = 0.78 ~ 0.90`，`Metalness = 0.0`），避免硬方向高光烘焙。
+
+## 五、环境概念分镜
+
+- [x] [泻湖渔村的一天](../art_pipeline/concepts/storyboards/stillwater_fishing_village_storyboard.png) · 1672 × 941 PNG，四格水粉概念图，覆盖山坡、船头、鱼市和栈桥四个机位。

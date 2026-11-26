@@ -818,6 +818,11 @@ export function buildSwimmingCompanion(scene) {
   scene.add(root);
 
   let rippleTimer = 0.25;
+  let isChasing = false;
+  let smoothMove = 0;
+  let trotPhase = 0;
+  let swimPhase = 0;
+  const prevPos = new THREE.Vector2(pos.x, pos.z);
 
   return {
     root,
@@ -834,15 +839,27 @@ export function buildSwimmingCompanion(scene) {
       glbHolder.clear();
       // Blender GLB faces +Z; companion root swims/trots along +X -> rotate +90deg Y!
       adapter.model.rotation.y = Math.PI / 2;
-      adapter.model.position.y -= 0.18;
+      adapter.model.position.y -= 0.18 / 0.86;
+      // Cache rest local Y positions on Rig_* pivots so bounce & paw-lift never drift!
+      if (adapter.hasRig) {
+        for (const node of Object.values(adapter.rig)) {
+          if (node && node.position) {
+            node.userData.restY = node.position.y;
+            node.userData.restZ = node.position.z;
+          }
+        }
+      }
       glbHolder.add(adapter.model);
       glbHolder.visible = true;
       root.add(glbHolder);
     },
     teleportNear(x, y, z, landMode) {
       pos.set(x, y, z);
+      prevPos.set(x, z);
+      isChasing = false;
+      smoothMove = 0;
       onLand = Boolean(landMode);
-      root.position.set(x, landMode ? y + 0.22 : 0.005, z);
+      root.position.set(x, landMode ? y + 0.18 : 0.005, z);
     },
     update(dt, elapsedTime, boatState, addRipple, landContext = null) {
       if (!root.visible) return;
@@ -851,7 +868,7 @@ export function buildSwimmingCompanion(scene) {
       const walkingMode = Boolean(landContext && landContext.walking);
 
       if (walkingMode) {
-        // ---- AMPHIBIOUS LAND FOLLOW MODE (Smart doorway routing & zero wall/door clipping!) ----
+        // ---- AMPHIBIOUS LAND FOLLOW MODE (Zero twitching: real-displacement gating + hysteresis + indoor clamping!) ----
         onLand = true;
         const pPos = landContext.playerPos;
         const pYaw = landContext.playerYaw;
@@ -860,22 +877,31 @@ export function buildSwimmingCompanion(scene) {
         const sideX = Math.cos(pYaw);
         const sideZ = -Math.sin(pYaw);
 
-        let targetX = pPos.x + backX * 0.98 + sideX * 0.68;
-        let targetZ = pPos.z + backZ * 0.98 + sideZ * 0.68;
+        let targetX = pPos.x + backX * 0.96 + sideX * 0.62;
+        let targetZ = pPos.z + backZ * 0.96 + sideZ * 0.62;
 
-        // Smart doorway routing: prevent dog from rubbing against front walls or open door slabs!
+        // Smart doorway & indoor routing: prevent threshold ping-pong or targeting behind walls!
         if (landContext.town && landContext.town.enterableBuildings) {
           for (const b of landContext.town.enterableBuildings) {
             const playerIn = b.isPointInside(pPos.x, pPos.z, 0.04);
             const dogIn = b.isPointInside(pos.x, pos.z, 0.04);
+            if (playerIn && dogIn) {
+              // Clamp indoor follow point cleanly inside walkable room bounds so dog never pushes into door/walls!
+              const localT = b.toLocal(targetX, targetZ);
+              const limX = b.dims.width * 0.5 - 0.58;
+              const limZ = b.dims.depth * 0.5 - 0.58;
+              const clamped = b.toWorld(clamp(localT.x, -limX, limX), 0, clamp(localT.z, -limZ, limZ));
+              targetX = clamped.x;
+              targetZ = clamped.z;
+              break;
+            }
             if (playerIn !== dogIn) {
-              const doorOutside = b.toWorld(b.dims.doorX + 0.12, 0, b.dims.depth * 0.5 + 0.78);
-              const doorInside = b.toWorld(b.dims.doorX + 0.12, 0, b.dims.depth * 0.5 - 0.62);
-              if (b.isDoorOpen && b.doorOpenAmount > 0.45) {
-                // Aim straight through the open doorway center before heading to player!
+              const doorOutside = b.toWorld(b.dims.doorX + 0.12, 0, b.dims.depth * 0.5 + 0.85);
+              const doorInside = b.toWorld(b.dims.doorX + 0.12, 0, b.dims.depth * 0.5 - 0.72);
+              if (b.isDoorOpen && b.doorOpenAmount > 0.55) {
                 const goalPt = playerIn ? doorInside : doorOutside;
-                const dToDoor = Math.hypot(doorOutside.x - pos.x, doorOutside.z - pos.z);
-                if (playerIn && dToDoor > 0.55) {
+                const dToOutside = Math.hypot(doorOutside.x - pos.x, doorOutside.z - pos.z);
+                if (playerIn && dToOutside > 0.58) {
                   targetX = doorOutside.x;
                   targetZ = doorOutside.z;
                 } else {
@@ -883,7 +909,7 @@ export function buildSwimmingCompanion(scene) {
                   targetZ = goalPt.z;
                 }
               } else if (playerIn) {
-                // Wait patiently right on the front porch when door is closed
+                // Wait calmly on the front porch when the door is closed
                 targetX = doorOutside.x;
                 targetZ = doorOutside.z;
               }
@@ -892,15 +918,22 @@ export function buildSwimmingCompanion(scene) {
           }
         }
 
+        prevPos.set(pos.x, pos.z);
         const dx = targetX - pos.x;
         const dz = targetZ - pos.z;
         const dist = Math.hypot(dx, dz);
 
+        // Clean hysteresis: start trotting at > 0.88m, stop calmly at < 0.36m (eliminates micro-jitter!)
+        if (!isChasing && dist > 0.88) isChasing = true;
+        if (isChasing && dist < 0.36) isChasing = false;
+
         if (dist > 8.5) {
           pos.x = targetX;
           pos.z = targetZ;
-        } else if (dist > 0.16) {
-          const speed = clamp(dist * 2.5, 0.9, 4.4);
+          prevPos.set(pos.x, pos.z);
+          isChasing = false;
+        } else if (isChasing && dist > 0.12) {
+          const speed = clamp(dist * 2.4, 0.85, 4.2);
           const step = Math.min(dist, speed * clampedDt);
           const candX = pos.x + (dx / dist) * step;
           const candZ = pos.z + (dz / dist) * step;
@@ -912,41 +945,139 @@ export function buildSwimmingCompanion(scene) {
           } else if (landContext.town.isWalkableLand(pos.x, candZ)) {
             pos.z = candZ;
           }
-          if (landContext.town) landContext.town.resolveLandCollisions(pos, 0.36);
+          if (landContext.town) landContext.town.resolveLandCollisions(pos, 0.34);
         } else if (landContext.town) {
-          landContext.town.resolveLandCollisions(pos, 0.36);
+          landContext.town.resolveLandCollisions(pos, 0.34);
         }
 
-        const groundY = landContext.town ? landContext.town.getWalkableElevation(pos.x, pos.z) : 0.5;
-        const isMoving = dist > 0.24;
+        // Gate trot animation strictly by ACTUAL displaced speed (if blocked by a jamb/wall, calm Idle -> ZERO twitch!)
+        const movedDist = Math.hypot(pos.x - prevPos.x, pos.z - prevPos.z);
+        const realSpeed = clampedDt > 1e-4 ? movedDist / clampedDt : 0;
+        const targetMove = realSpeed > 0.16 ? clamp(realSpeed / 1.45, 0.55, 1.15) : 0.0;
+        smoothMove = THREE.MathUtils.lerp(smoothMove, targetMove, clamp(clampedDt * 9.0, 0, 1));
+        const isMoving = smoothMove > 0.12;
 
-        const desiredYaw = isMoving ? Math.atan2(-dz, dx) : Math.atan2(-(pPos.z - pos.z), pPos.x - pos.x);
+        const groundY = landContext.town ? landContext.town.getWalkableElevation(pos.x, pos.z) : 0.5;
+        const moveDx = pos.x - prevPos.x;
+        const moveDz = pos.z - prevPos.z;
+        const desiredYaw =
+          realSpeed > 0.22
+            ? Math.atan2(-moveDz, moveDx)
+            : Math.atan2(-(pPos.z - pos.z), pPos.x - pos.x);
         let diff = desiredYaw - yaw;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        yaw += diff * clamp(clampedDt * 7.5, 0, 1);
+        yaw += diff * clamp(clampedDt * 6.5, 0, 1);
 
-        const trotPhase = elapsedTime * (isMoving ? 11.5 : 3.0);
-        const bounce = isMoving ? Math.abs(Math.sin(trotPhase)) * 0.048 : Math.sin(elapsedTime * 2.4) * 0.008;
+        // Smooth accumulated phase (NEVER jumps when speed changes!)
+        trotPhase += clampedDt * (3.2 + smoothMove * 11.2);
+        const strideSin = Math.sin(trotPhase);
+        const strideCos = Math.cos(trotPhase);
+        const bounce = smoothMove * Math.abs(strideSin) * 0.068;
 
         pos.y = THREE.MathUtils.lerp(pos.y, groundY, clamp(clampedDt * 12, 0, 1));
         root.position.set(pos.x, pos.y + 0.18 + bounce, pos.z);
         root.rotation.y = yaw;
         root.rotation.x = 0;
-        root.rotation.z = isMoving ? Math.sin(trotPhase) * 0.06 : 0;
+        root.rotation.z = THREE.MathUtils.lerp(
+          root.rotation.z,
+          smoothMove * Math.cos(trotPhase * 2.0) * 0.065,
+          clamp(clampedDt * 12, 0, 1)
+        );
 
-        headGroup.rotation.y = Math.sin(elapsedTime * 1.6) * 0.16;
-        headGroup.rotation.z = isMoving ? 0.05 : 0;
+        const legAmp = smoothMove * 0.96;
+        const legSin = strideSin * legAmp;
+        const tailWag = Math.sin(elapsedTime * (isMoving ? 13.5 : 6.4)) * (isMoving ? 0.58 : 0.34);
 
-        const legAmp = isMoving ? 0.65 : 0.04;
-        pawFL.rotation.z = Math.sin(trotPhase) * legAmp;
-        pawFR.rotation.z = -Math.sin(trotPhase) * legAmp;
-        pawBL.rotation.z = -Math.sin(trotPhase) * legAmp;
-        pawBR.rotation.z = Math.sin(trotPhase) * legAmp;
-        tail.rotation.y = Math.sin(elapsedTime * (isMoving ? 12.0 : 8.5)) * 0.48;
+        headGroup.rotation.y = Math.sin(elapsedTime * 1.4) * 0.14;
+        headGroup.rotation.z = smoothMove * 0.08;
+        pawFL.rotation.z = legSin;
+        pawFR.rotation.z = -legSin;
+        pawBL.rotation.z = -legSin;
+        pawBR.rotation.z = legSin;
+        tail.rotation.y = tailWag;
+
         if (dogGlb) {
           dogGlb.playAction(isMoving ? 'Run' : 'Idle');
           dogGlb.update(clampedDt);
+          if (dogGlb.hasRig) {
+            const rg = dogGlb.rig;
+            const rk = clamp(clampedDt * 14, 0, 1);
+            const breathe = Math.sin(elapsedTime * 2.4) * (1.0 - Math.min(1, smoothMove));
+
+            // Lively top-down-readable puppy trot: bold diagonal 4-paw swing + upward step lift + joyful body waddle/pitch!
+            const liftA = Math.max(0, strideCos) * 0.052 * smoothMove;
+            const liftB = Math.max(0, -strideCos) * 0.052 * smoothMove;
+            const pushA = strideSin * 0.042 * smoothMove;
+            const pushB = -strideSin * 0.042 * smoothMove;
+
+            if (rg.body) {
+              const restY = rg.body.userData.restY ?? rg.body.position.y;
+              rg.body.position.y = THREE.MathUtils.lerp(
+                rg.body.position.y,
+                restY + breathe * 0.012 + Math.abs(strideSin) * 0.032 * smoothMove,
+                rk
+              );
+              rg.body.rotation.z = THREE.MathUtils.lerp(rg.body.rotation.z, strideSin * 0.15 * smoothMove, rk);
+              rg.body.rotation.x = THREE.MathUtils.lerp(
+                rg.body.rotation.x,
+                Math.cos(trotPhase * 2.0) * 0.105 * smoothMove + breathe * 0.018,
+                rk
+              );
+              rg.body.rotation.y = THREE.MathUtils.lerp(rg.body.rotation.y, strideSin * 0.1 * smoothMove, rk);
+            }
+
+            if (rg.pawFL) {
+              const ry = rg.pawFL.userData.restY ?? rg.pawFL.position.y;
+              const rz = rg.pawFL.userData.restZ ?? rg.pawFL.position.z;
+              rg.pawFL.rotation.x = THREE.MathUtils.lerp(rg.pawFL.rotation.x, -legSin, rk);
+              rg.pawFL.position.y = THREE.MathUtils.lerp(rg.pawFL.position.y, ry + liftA, rk);
+              rg.pawFL.position.z = THREE.MathUtils.lerp(rg.pawFL.position.z, rz + pushA, rk);
+            }
+            if (rg.pawFR) {
+              const ry = rg.pawFR.userData.restY ?? rg.pawFR.position.y;
+              const rz = rg.pawFR.userData.restZ ?? rg.pawFR.position.z;
+              rg.pawFR.rotation.x = THREE.MathUtils.lerp(rg.pawFR.rotation.x, legSin, rk);
+              rg.pawFR.position.y = THREE.MathUtils.lerp(rg.pawFR.position.y, ry + liftB, rk);
+              rg.pawFR.position.z = THREE.MathUtils.lerp(rg.pawFR.position.z, rz + pushB, rk);
+            }
+            if (rg.pawBL) {
+              const ry = rg.pawBL.userData.restY ?? rg.pawBL.position.y;
+              const rz = rg.pawBL.userData.restZ ?? rg.pawBL.position.z;
+              rg.pawBL.rotation.x = THREE.MathUtils.lerp(rg.pawBL.rotation.x, legSin * 1.05, rk);
+              rg.pawBL.position.y = THREE.MathUtils.lerp(rg.pawBL.position.y, ry + liftB, rk);
+              rg.pawBL.position.z = THREE.MathUtils.lerp(rg.pawBL.position.z, rz + pushB, rk);
+            }
+            if (rg.pawBR) {
+              const ry = rg.pawBR.userData.restY ?? rg.pawBR.position.y;
+              const rz = rg.pawBR.userData.restZ ?? rg.pawBR.position.z;
+              rg.pawBR.rotation.x = THREE.MathUtils.lerp(rg.pawBR.rotation.x, -legSin * 1.05, rk);
+              rg.pawBR.position.y = THREE.MathUtils.lerp(rg.pawBR.position.y, ry + liftA, rk);
+              rg.pawBR.position.z = THREE.MathUtils.lerp(rg.pawBR.position.z, rz + pushA, rk);
+            }
+            if (rg.tail) {
+              rg.tail.rotation.y = THREE.MathUtils.lerp(rg.tail.rotation.y, tailWag, rk);
+              rg.tail.rotation.x = THREE.MathUtils.lerp(
+                rg.tail.rotation.x,
+                (isMoving ? 0.22 : 0.05) + Math.abs(Math.sin(trotPhase)) * 0.14 * smoothMove,
+                rk
+              );
+            }
+            if (rg.head) {
+              const idleLook = Math.sin(elapsedTime * 1.25) * 0.16 * (1.0 - Math.min(1, smoothMove));
+              rg.head.rotation.y = THREE.MathUtils.lerp(rg.head.rotation.y, idleLook - strideSin * 0.08 * smoothMove, rk);
+              rg.head.rotation.x = THREE.MathUtils.lerp(
+                rg.head.rotation.x,
+                -0.1 * smoothMove + Math.sin(trotPhase * 2.0) * 0.085 * smoothMove,
+                rk
+              );
+              rg.head.rotation.z = THREE.MathUtils.lerp(
+                rg.head.rotation.z,
+                -strideSin * 0.1 * smoothMove + Math.sin(elapsedTime * 0.9) * 0.05,
+                rk
+              );
+            }
+          }
         }
         return;
       }
@@ -963,7 +1094,8 @@ export function buildSwimmingCompanion(scene) {
 
       if (onLand) {
         onLand = false;
-        // Hop smoothly back into the water beside the boat when boarding!
+        isChasing = false;
+        smoothMove = 0;
         if (Math.hypot(targetX - pos.x, targetZ - pos.z) > 6.0 || getWorldElevation(pos.x, pos.z) >= -0.15) {
           pos.set(targetX, 0, targetZ);
         }
@@ -990,8 +1122,9 @@ export function buildSwimmingCompanion(scene) {
       while (diff < -Math.PI) diff += Math.PI * 2;
       yaw += diff * clamp(clampedDt * 4.2, 0, 1);
 
-      const paddleFreq = 5.5 + clamp(dist * 2.2, 0, 5.0);
-      const paddlePhase = elapsedTime * paddleFreq;
+      const paddleFreq = 5.5 + clamp(dist * 2.0, 0, 4.5);
+      swimPhase += clampedDt * paddleFreq;
+      const paddlePhase = swimPhase;
 
       pos.y = THREE.MathUtils.lerp(pos.y, 0.005, clamp(clampedDt * 8, 0, 1));
       root.position.set(pos.x, pos.y + Math.sin(elapsedTime * 3.1) * 0.018, pos.z);
@@ -999,18 +1132,47 @@ export function buildSwimmingCompanion(scene) {
       root.rotation.x = Math.sin(paddlePhase * 0.5) * 0.05;
       root.rotation.z = Math.cos(elapsedTime * 2.4) * 0.04;
 
-      headGroup.rotation.y = Math.sin(elapsedTime * 1.3) * 0.18;
+      headGroup.rotation.y = Math.sin(elapsedTime * 1.3) * 0.16;
       headGroup.rotation.z = Math.sin(elapsedTime * 2.6) * 0.05;
 
-      pawFL.rotation.z = 0.65 + Math.sin(paddlePhase) * 0.72;
-      pawFR.rotation.z = 0.65 + Math.sin(paddlePhase + Math.PI) * 0.72;
-      pawBL.rotation.z = 0.75 + Math.sin(paddlePhase + Math.PI) * 0.55;
-      pawBR.rotation.z = 0.75 + Math.sin(paddlePhase) * 0.55;
+      const pFL = 0.55 + Math.sin(paddlePhase) * 0.62;
+      const pFR = 0.55 + Math.sin(paddlePhase + Math.PI) * 0.62;
+      const pBL = 0.65 + Math.sin(paddlePhase + Math.PI) * 0.48;
+      const pBR = 0.65 + Math.sin(paddlePhase) * 0.48;
+      pawFL.rotation.z = pFL;
+      pawFR.rotation.z = pFR;
+      pawBL.rotation.z = pBL;
+      pawBR.rotation.z = pBR;
 
-      tail.rotation.y = Math.sin(elapsedTime * 7.5) * 0.35;
+      const swimTail = Math.sin(elapsedTime * 7.2) * 0.35;
+      tail.rotation.y = swimTail;
       if (dogGlb) {
         dogGlb.playAction('Swim');
         dogGlb.update(clampedDt);
+        if (dogGlb.hasRig) {
+          const rg = dogGlb.rig;
+          if (rg.body) {
+            if (rg.body.userData.restY !== undefined) rg.body.position.y = rg.body.userData.restY;
+            rg.body.rotation.set(0, 0, 0);
+          }
+          for (const pk of ['pawFL', 'pawFR', 'pawBL', 'pawBR']) {
+            if (rg[pk]) {
+              if (rg[pk].userData.restY !== undefined) rg[pk].position.y = rg[pk].userData.restY;
+              if (rg[pk].userData.restZ !== undefined) rg[pk].position.z = rg[pk].userData.restZ;
+            }
+          }
+          if (rg.pawFL) rg.pawFL.rotation.x = -pFL;
+          if (rg.pawFR) rg.pawFR.rotation.x = -pFR;
+          if (rg.pawBL) rg.pawBL.rotation.x = -pBL;
+          if (rg.pawBR) rg.pawBR.rotation.x = -pBR;
+          if (rg.tail) {
+            rg.tail.rotation.y = swimTail;
+            rg.tail.rotation.x = 0.08;
+          }
+          if (rg.head) {
+            rg.head.rotation.set(0, Math.sin(elapsedTime * 1.3) * 0.16, 0);
+          }
+        }
       }
 
       rippleTimer -= clampedDt;
