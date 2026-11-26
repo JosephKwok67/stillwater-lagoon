@@ -376,13 +376,16 @@ def bake_gouache_atlas(root, out_png_path, tex_size=1024, skip_mat_substrings=("
     for obj in collect_hierarchy_objects(root):
         if obj.type != "MESH" or not obj.data.polygons:
             continue
-        mat = obj.data.materials[0] if obj.data.materials else None
-        mname = mat.name if mat else ""
-        if any(sub.lower() in mname.lower() for sub in skip_mat_substrings):
+        mats_on_obj = [m for m in obj.data.materials if m is not None]
+        if not mats_on_obj:
+            continue
+        # Skip only if ALL material slots on this mesh are non-baked special shaders (Brass, EyeDark, Glass...)
+        if all(any(sub.lower() in m.name.lower() for sub in skip_mat_substrings) for m in mats_on_obj):
             continue
         bake_objs.append(obj)
-        if mat:
-            used_mats.add(mat)
+        for m in mats_on_obj:
+            if not any(sub.lower() in m.name.lower() for sub in skip_mat_substrings):
+                used_mats.add(m)
 
     if not bake_objs:
         return None

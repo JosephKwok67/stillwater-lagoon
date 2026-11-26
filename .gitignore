@@ -13,6 +13,7 @@ art_pipeline/blender_ag/textures/
 art_pipeline/blender_ag/previews/
 art_pipeline/blender_ag/whitebox/
 art_pipeline/blender_ag/whitebox_v21/
+art_pipeline/blender_ag/joint_renders/
 art_pipeline/concepts/
 .DS_Store
 Thumbs.db

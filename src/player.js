@@ -259,7 +259,8 @@ export function createPlayerAvatar() {
     glbWrap.add(adapter.model);
     // Attach hand-held fishing rod directly onto Rig_ArmR hand when available so rod swings with real arm!
     if (adapter.hasRig && adapter.rig.armR) {
-      rodGroup.position.set(-0.18, -0.32, 0.06);
+      // Exact right palm grip offset inside Player v2.0 Rig_ArmR!
+      rodGroup.position.set(-0.055, -0.308, 0.072);
       adapter.rig.armR.add(rodGroup);
     } else {
       rodGroup.position.set(-0.24, 0.72, 0.14);
