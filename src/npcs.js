@@ -277,6 +277,12 @@ export function buildTownNpcs(scene, town) {
         this.glbAdapter = adapter;
         this.rig.bodyRoot.visible = false;
         this.rig.root.add(adapter.model);
+        // Attach a warm golden PointLight directly to Hai Bo's right-hand storm lantern wick!
+        if (this.id === 'npc_lighthouse' && adapter.rig && adapter.rig.armR) {
+          const lanternGlow = new THREE.PointLight(0xffcb66, 0.95, 5.2, 1.8);
+          lanternGlow.position.set(-0.138, -0.467, 0.105);
+          adapter.rig.armR.add(lanternGlow);
+        }
       },
     });
   }
