@@ -15,6 +15,9 @@ art_pipeline/blender_ag/whitebox/
 art_pipeline/blender_ag/whitebox_v21/
 art_pipeline/blender_ag/joint_renders/
 art_pipeline/concepts/
+art_pipeline/tripo_inbox/
+art_pipeline/tripo_kit/
+art_pipeline/blender_ag/tripo_cleaned/
 .DS_Store
 Thumbs.db
 *.log

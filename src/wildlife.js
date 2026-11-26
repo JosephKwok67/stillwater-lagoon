@@ -1002,56 +1002,61 @@ export function buildSwimmingCompanion(scene) {
           dogGlb.update(clampedDt);
           if (dogGlb.hasRig) {
             const rg = dogGlb.rig;
+            const isSkinned = Boolean(rg.body && rg.body.isBone);
             const rk = clamp(clampedDt * 14, 0, 1);
             const breathe = Math.sin(elapsedTime * 2.4) * (1.0 - Math.min(1, smoothMove));
 
-            // Lively top-down-readable puppy trot: bold diagonal 4-paw swing + upward step lift + joyful body waddle/pitch!
-            const liftA = Math.max(0, strideCos) * 0.052 * smoothMove;
-            const liftB = Math.max(0, -strideCos) * 0.052 * smoothMove;
-            const pushA = strideSin * 0.042 * smoothMove;
-            const pushB = -strideSin * 0.042 * smoothMove;
+            // Lively top-down-readable puppy trot: bold diagonal 4-paw swing + joyful body waddle/pitch!
+            // Skinned Tripo bone rigs use clean rotational swing + gentle elastic lift to keep clay shoulders smooth!
+            const pawSwing = isSkinned ? strideSin * smoothMove * 0.64 : legSin;
+            const liftAmp = isSkinned ? 0.014 : 0.052;
+            const pushAmp = isSkinned ? 0.012 : 0.042;
+            const liftA = Math.max(0, strideCos) * liftAmp * smoothMove;
+            const liftB = Math.max(0, -strideCos) * liftAmp * smoothMove;
+            const pushA = strideSin * pushAmp * smoothMove;
+            const pushB = -strideSin * pushAmp * smoothMove;
 
             if (rg.body) {
               const restY = rg.body.userData.restY ?? rg.body.position.y;
               rg.body.position.y = THREE.MathUtils.lerp(
                 rg.body.position.y,
-                restY + breathe * 0.012 + Math.abs(strideSin) * 0.032 * smoothMove,
+                restY + breathe * 0.010 + Math.abs(strideSin) * (isSkinned ? 0.024 : 0.032) * smoothMove,
                 rk
               );
-              rg.body.rotation.z = THREE.MathUtils.lerp(rg.body.rotation.z, strideSin * 0.15 * smoothMove, rk);
+              rg.body.rotation.z = THREE.MathUtils.lerp(rg.body.rotation.z, strideSin * (isSkinned ? 0.11 : 0.15) * smoothMove, rk);
               rg.body.rotation.x = THREE.MathUtils.lerp(
                 rg.body.rotation.x,
-                Math.cos(trotPhase * 2.0) * 0.105 * smoothMove + breathe * 0.018,
+                Math.cos(trotPhase * 2.0) * (isSkinned ? 0.08 : 0.105) * smoothMove + breathe * 0.016,
                 rk
               );
-              rg.body.rotation.y = THREE.MathUtils.lerp(rg.body.rotation.y, strideSin * 0.1 * smoothMove, rk);
+              rg.body.rotation.y = THREE.MathUtils.lerp(rg.body.rotation.y, strideSin * 0.09 * smoothMove, rk);
             }
 
             if (rg.pawFL) {
               const ry = rg.pawFL.userData.restY ?? rg.pawFL.position.y;
               const rz = rg.pawFL.userData.restZ ?? rg.pawFL.position.z;
-              rg.pawFL.rotation.x = THREE.MathUtils.lerp(rg.pawFL.rotation.x, -legSin, rk);
+              rg.pawFL.rotation.x = THREE.MathUtils.lerp(rg.pawFL.rotation.x, -pawSwing, rk);
               rg.pawFL.position.y = THREE.MathUtils.lerp(rg.pawFL.position.y, ry + liftA, rk);
               rg.pawFL.position.z = THREE.MathUtils.lerp(rg.pawFL.position.z, rz + pushA, rk);
             }
             if (rg.pawFR) {
               const ry = rg.pawFR.userData.restY ?? rg.pawFR.position.y;
               const rz = rg.pawFR.userData.restZ ?? rg.pawFR.position.z;
-              rg.pawFR.rotation.x = THREE.MathUtils.lerp(rg.pawFR.rotation.x, legSin, rk);
+              rg.pawFR.rotation.x = THREE.MathUtils.lerp(rg.pawFR.rotation.x, pawSwing, rk);
               rg.pawFR.position.y = THREE.MathUtils.lerp(rg.pawFR.position.y, ry + liftB, rk);
               rg.pawFR.position.z = THREE.MathUtils.lerp(rg.pawFR.position.z, rz + pushB, rk);
             }
             if (rg.pawBL) {
               const ry = rg.pawBL.userData.restY ?? rg.pawBL.position.y;
               const rz = rg.pawBL.userData.restZ ?? rg.pawBL.position.z;
-              rg.pawBL.rotation.x = THREE.MathUtils.lerp(rg.pawBL.rotation.x, legSin * 1.05, rk);
+              rg.pawBL.rotation.x = THREE.MathUtils.lerp(rg.pawBL.rotation.x, pawSwing * 1.04, rk);
               rg.pawBL.position.y = THREE.MathUtils.lerp(rg.pawBL.position.y, ry + liftB, rk);
               rg.pawBL.position.z = THREE.MathUtils.lerp(rg.pawBL.position.z, rz + pushB, rk);
             }
             if (rg.pawBR) {
               const ry = rg.pawBR.userData.restY ?? rg.pawBR.position.y;
               const rz = rg.pawBR.userData.restZ ?? rg.pawBR.position.z;
-              rg.pawBR.rotation.x = THREE.MathUtils.lerp(rg.pawBR.rotation.x, -legSin * 1.05, rk);
+              rg.pawBR.rotation.x = THREE.MathUtils.lerp(rg.pawBR.rotation.x, -pawSwing * 1.04, rk);
               rg.pawBR.position.y = THREE.MathUtils.lerp(rg.pawBR.position.y, ry + liftA, rk);
               rg.pawBR.position.z = THREE.MathUtils.lerp(rg.pawBR.position.z, rz + pushA, rk);
             }
@@ -1161,10 +1166,11 @@ export function buildSwimmingCompanion(scene) {
               if (rg[pk].userData.restZ !== undefined) rg[pk].position.z = rg[pk].userData.restZ;
             }
           }
-          if (rg.pawFL) rg.pawFL.rotation.x = -pFL;
-          if (rg.pawFR) rg.pawFR.rotation.x = -pFR;
-          if (rg.pawBL) rg.pawBL.rotation.x = -pBL;
-          if (rg.pawBR) rg.pawBR.rotation.x = -pBR;
+          const swimScale = rg.body && rg.body.isBone ? 0.65 : 1.0;
+          if (rg.pawFL) rg.pawFL.rotation.x = -pFL * swimScale;
+          if (rg.pawFR) rg.pawFR.rotation.x = -pFR * swimScale;
+          if (rg.pawBL) rg.pawBL.rotation.x = -pBL * swimScale;
+          if (rg.pawBR) rg.pawBR.rotation.x = -pBR * swimScale;
           if (rg.tail) {
             rg.tail.rotation.y = swimTail;
             rg.tail.rotation.x = 0.08;

@@ -1,9 +1,11 @@
 # 《钓鱼大冒险 · 静水泻湖》工作室永久协作规则 (Studio Pipeline Rule)
 
-## 1. 模型与分工铁律
+## 1. 美术风格、引擎与模型分工铁律
+- **目标画风与引擎**：坚持 **Three.js + Vite 网页零门槛试玩**（不迁 UE），整体视觉往 **《动物森友会》× 吉卜力治愈手绘微缩海岛风** 打磨（柔和暖光、低反光磨砂水粉质感、圆润有机造型）。
 - **思路框架、结构策划、解剖/建筑比例规范与严苛终审**：必须调用 Codex **`gpt-6.2-astra` (`reasoning_effort = "ultra"`)** 完成，并沉淀文档至 `art_pipeline/brief/`。
 - **概念构图、三视图与细节分镜图生成（`imagegen` / Image 2.5）**：必须调用 Codex **`gpt-6.2-sol` (`reasoning_effort = "medium"`)** 完成，所有图像输出严格限定在 `art_pipeline/concepts/` 目录内。
-- **3D 建模雕刻、白模验证、手绘水粉烘焙、GLB 导出、场景合图渲染与游戏源码工程 (`src/`, `public/`)**：由 **Antigravity** 负责执行与验收；Codex 不直接操作 Blender 或修改游戏源码。
+- **高细节有机资产 3D 初模（Tripo 免费版图生 3D 协同）**：针对角色雕刻、小狗/生物、鱼类、花树植被、木船与精细摆件，优先将 `6.2-Sol` 裁切好的独立多视图（`art_pipeline/tripo_kit/ready_to_upload/`）交由用户上传至 Tripo Web 生成高精 `.glb` 并放入 `art_pipeline/tripo_inbox/`；可无缝推门进入的房屋壳体与碰撞骨架仍由 Blender 代码精准构建。
+- **3D 清洗减面、去除塑料反光、骨骼绑定、水粉烘焙、GLB 导出、场景合图与游戏源码 (`src/`, `public/`)**：由 **Antigravity + Blender 5.3** 负责执行（含 `ingest_tripo_glb.py` 自动管线）与多视角零穿模验收；Codex 不直接操作 Blender 或修改游戏源码。
 
 ## 2. 明确分镜镜头先行铁律（Mandatory Shot Breakdown）
 - **任何角色、道具或场景在进入 3D 建模前，都必须先有明确的分镜镜头构图，把细节拆透**：
