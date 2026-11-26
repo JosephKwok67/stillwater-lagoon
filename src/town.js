@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { mulberry32, clamp } from './noise.js';
-import { getWorldElevation } from './terrain.js';
+import { getWorldElevation, getShoreZ } from './terrain.js';
 import {
   createWoodPlankTexture,
   createStuccoTexture,
@@ -36,9 +36,9 @@ function prepareCutawayMaterials(root) {
 function createIndoorAquarium(timberMat, darkTimberMat) {
   const group = new THREE.Group();
 
-  const tankW = 1.82;
-  const tankH = 0.84;
-  const tankD = 0.56;
+  const tankW = 2.04;
+  const tankH = 0.86;
+  const tankD = 0.60;
   const standH = 0.56;
 
   // Honey-wood cabinet stand underneath the glass tank
@@ -223,6 +223,11 @@ function createCottage({
   depth = 2.2,
   wallHeight = 1.65,
   roofHeight = 1.15,
+  floorY = 0.14,
+  doorX: customDoorX = null,
+  doorW: customDoorW = null,
+  doorH: customDoorH = null,
+  porchD: customPorchD = 1.22,
   wallMat,
   roofMat,
   trimMat,
@@ -241,11 +246,11 @@ function createCottage({
   const roofCutawayGroup = new THREE.Group();
   group.add(roofCutawayGroup);
 
-  const floorY = 0.14;
   const wallT = 0.16;
-  const doorW = enterable ? 0.94 : 0.54;
-  const doorH = enterable ? 1.24 : 0.96;
-  const doorX = isPlayerHome ? -0.68 : 0;
+  const doorW = customDoorW ?? (enterable ? 0.94 : 0.54);
+  const doorH = customDoorH ?? (enterable ? 1.24 : 0.96);
+  const doorX = customDoorX ?? (isPlayerHome ? -0.68 : 0);
+  const porchD = customPorchD;
 
   // Deep stone foundation skirt so sloped ground never shows gaps under the house
   const baseGeo = new THREE.BoxGeometry(width + 0.24, 1.5, depth + 0.24);
@@ -446,9 +451,9 @@ function createCottage({
       bedGroup.add(bedFrame, headboard, mattress, quilt, pillow);
       bedGroup.position.set(-1.26, floorY + 0.04, -depth * 0.5 + 0.98);
       group.add(bedGroup);
-      interiorAnchors.bed = new THREE.Vector3(-1.26, floorY + 0.5, -depth * 0.5 + 1.05);
-      interiorAnchors.bedLie = new THREE.Vector3(-1.26, floorY + 0.44, -depth * 0.5 + 0.88);
-      interiorAnchors.bedWake = new THREE.Vector3(-0.32, floorY + 0.05, -depth * 0.5 + 1.25);
+      interiorAnchors.bed = new THREE.Vector3(-1.52, floorY + 0.5, -depth * 0.5 + 1.05);
+      interiorAnchors.bedLie = new THREE.Vector3(-1.52, floorY + 0.48, -depth * 0.5 + 0.92);
+      interiorAnchors.bedWake = new THREE.Vector3(-0.32, floorY + 0.05, -depth * 0.5 + 1.35);
 
       // 4. Tiny wooden nightstand & glowing reading lamp
       const table = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.44, 0.44), trimMat);
@@ -648,7 +653,6 @@ function createCottage({
 
   // Optional cozy covered wooden porch on the front (+Z)
   let porchLanternPos = null;
-  const porchD = 1.22;
   if (hasPorch) {
     // Solid wooden porch deck with deep skirt under it so porch never floats on any slope!
     const deck = new THREE.Mesh(new THREE.BoxGeometry(width + 0.18, 0.16, porchD), trimMat);
@@ -738,7 +742,7 @@ function createCottage({
     interiorAnchors,
     chimneyTopLocal,
     porchLanternPos,
-    dims: { width, depth, wallHeight, floorY, wallT, doorX, doorW, doorH },
+    dims: { width, depth, wallHeight, floorY, wallT, doorX, doorW, doorH, porchD },
   };
 }
 
@@ -786,6 +790,13 @@ function createTreeMesh(rng, woodMat, leafMats) {
  * Helper to build a walkable wooden fishing pier with shore ramp, pilings, lantern,
  * boat collision proxies, and dock anchor metadata for seamless boarding/disembarking!
  */
+/**
+ * v2.1 Unified 5-Step Tiered Wooden Pier (GPT-6.2-Astra Ultra spec):
+ * - Starts cleanly on the flat Promenade / Stone Quay coping (Y = +1.14m)
+ * - Descends via 5 crisp 0.14m-drop wooden stairs (clear width 1.65m + side stringers)
+ * - Transitions onto a rock-solid flat timber pier deck at exact Y = +0.44m!
+ * - Inshore lowered 1.70m lantern keeps the pierhead fishing skyline 100% pure!
+ */
 function buildWoodenPier({
   id,
   nameZh,
@@ -793,7 +804,8 @@ function buildWoodenPier({
   pierStartZ,
   pierEndZ,
   pierY = 0.44,
-  pierW = 2.0,
+  quayY = 1.14,
+  pierW = 2.15,
   timberMat,
   darkTimberMat,
   rng,
@@ -804,98 +816,124 @@ function buildWoodenPier({
   decorations = false,
 }) {
   const pierGroup = new THREE.Group();
-  const pierLen = pierEndZ - pierStartZ;
-  const shoreY = Math.max(pierY, getWorldElevation(pierX, pierStartZ) + 0.04);
-  const rampLen = Math.min(2.15, pierLen * 0.44);
+  const steps = 5;
+  const stepD = 0.32;
+  const stairLen = steps * stepD; // 1.60m
+  const stairW = Math.max(1.58, pierW * 0.76);
+  const deckStartZ = pierStartZ + stairLen;
+  const deckLen = Math.max(3.2, pierEndZ - deckStartZ);
 
-  const plankCount = Math.max(12, Math.round(pierLen * 3.4));
+  // 1. Five crisp 0.14m wooden stairs descending smoothly from Quay (+1.14m) to Pier Deck (+0.44m)!
+  for (let s = 0; s < steps; s++) {
+    const sy = quayY - (s + 0.5) * 0.14;
+    const sz = pierStartZ + (s + 0.5) * stepD;
+    const tread = new THREE.Mesh(new THREE.BoxGeometry(stairW, 0.11, stepD + 0.03), timberMat);
+    tread.position.set(pierX, sy, sz);
+    tread.castShadow = true;
+    tread.receiveShadow = true;
+    pierGroup.add(tread);
+  }
+  // Sturdy angled wooden stair cheek stringers + grounded shore abutment
+  const slopeAngle = Math.atan2(quayY - pierY, stairLen);
+  const cheekLen = Math.hypot(stairLen, quayY - pierY) + 0.22;
+  for (const sx of [-1, 1]) {
+    const cheek = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.22, cheekLen), darkTimberMat);
+    cheek.position.set(pierX + sx * (stairW * 0.5 + 0.05), (quayY + pierY) * 0.5 - 0.06, pierStartZ + stairLen * 0.5);
+    cheek.rotation.x = slopeAngle;
+    cheek.castShadow = true;
+    pierGroup.add(cheek);
+  }
+  const abut = new THREE.Mesh(new THREE.BoxGeometry(stairW + 0.18, 1.3, 0.55), darkTimberMat);
+  abut.position.set(pierX, quayY - 0.66, pierStartZ - 0.1);
+  pierGroup.add(abut);
+
+  // 2. Crisp Flat Timber Pier Deck at exact Y = +0.44m!
+  const plankCount = Math.max(12, Math.round(deckLen * 3.1));
   for (let i = 0; i < plankCount; i++) {
     const t = i / (plankCount - 1);
-    const pz = pierStartZ + t * pierLen;
-    const distFromShore = pz - pierStartZ;
-    const rampBlend = 1.0 - clamp(distFromShore / rampLen, 0, 1);
-    const rampY = pierY + (shoreY - pierY) * rampBlend * rampBlend;
-    const groundClearY = getWorldElevation(pierX, pz) + 0.055;
-    const py = Math.max(rampY, groundClearY);
-
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(pierW, 0.1, 0.25), timberMat);
-    plank.position.set(pierX + (rng() - 0.5) * 0.02, py, pz);
+    const pz = deckStartZ + 0.1 + t * (deckLen - 0.1);
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(pierW, 0.1, 0.28), timberMat);
+    plank.position.set(pierX + (rng() - 0.5) * 0.02, pierY, pz);
     plank.castShadow = true;
     plank.receiveShadow = true;
     pierGroup.add(plank);
   }
 
-  // Solid wooden shore abutment under ramp head so pier never floats above sloped sand!
-  const abut = new THREE.Mesh(new THREE.BoxGeometry(pierW - 0.08, 1.0, 0.65), darkTimberMat);
-  abut.position.set(pierX, shoreY - 0.52, pierStartZ + 0.22);
-  pierGroup.add(abut);
-
-  // Longitudinal stringers under planks
+  // Longitudinal stringers under flat pier planks
   for (const sx of [-pierW * 0.42, pierW * 0.42]) {
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, pierLen + 0.15), darkTimberMat);
-    beam.position.set(pierX + sx, pierY - 0.09, (pierStartZ + pierEndZ) * 0.5);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, deckLen + 0.25), darkTimberMat);
+    beam.position.set(pierX + sx, pierY - 0.1, deckStartZ + deckLen * 0.5);
     pierGroup.add(beam);
   }
 
-  // Sturdy wooden pilings rooted deep into the seabed
-  const pilingSteps = Math.max(3, Math.round(pierLen / 1.65));
-  for (let i = 0; i <= pilingSteps; i++) {
-    const pz = pierStartZ + 0.8 + (i / pilingSteps) * (pierLen - 0.9);
+  // Sturdy wooden pilings rooted deep into the seabed (tall mooring bollards at ends, flush mid-piles!)
+  const pilingRows = Math.max(3, Math.round(deckLen / 1.75) + 1);
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0xc9af7d, roughness: 0.92 });
+  for (let i = 0; i < pilingRows; i++) {
+    const pz = deckStartZ + 0.35 + (i / Math.max(1, pilingRows - 1)) * (deckLen - 0.55);
+    const isBollard = i === 0 || i === pilingRows - 1;
     for (const sx of [-pierW * 0.46, pierW * 0.46]) {
       const px = pierX + sx;
       const sb = getWorldElevation(px, pz);
-      const pileTop = pierY + 0.34;
-      const pileH = Math.max(1.2, pileTop - sb + 0.3);
-      const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.125, pileH, 8), darkTimberMat);
+      const pileTop = pierY + (isBollard ? 0.34 : 0.06);
+      const pileH = Math.max(1.4, pileTop - sb + 0.45);
+      const pile = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, pileH, 8), darkTimberMat);
       pile.position.set(px, pileTop - pileH * 0.5, pz);
       pile.castShadow = true;
       pierGroup.add(pile);
+
+      if (isBollard) {
+        const tie = new THREE.Mesh(new THREE.TorusGeometry(0.118, 0.024, 6, 12), ropeMat);
+        tie.rotation.x = Math.PI / 2;
+        tie.position.set(px, pierY + 0.22, pz);
+        pierGroup.add(tie);
+      }
     }
   }
 
   if (decorations) {
-    const crate1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.38, 0.42), timberMat);
-    crate1.position.set(pierX + 0.62, pierY + 0.23, pierEndZ - 1.75);
-    crate1.rotation.y = 0.22;
+    const crate1 = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.38, 0.44), timberMat);
+    crate1.position.set(pierX + pierW * 0.32, pierY + 0.24, pierEndZ - 1.65);
+    crate1.rotation.y = 0.24;
     crate1.castShadow = true;
-    const rope = new THREE.Mesh(
-      new THREE.TorusGeometry(0.17, 0.042, 7, 14),
-      new THREE.MeshStandardMaterial({ color: 0xc9af7d, roughness: 0.92 })
-    );
+    const rope = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.045, 7, 14), ropeMat);
     rope.rotation.x = Math.PI / 2;
-    rope.position.set(pierX - 0.62, pierY + 0.08, pierEndZ - 0.72);
+    rope.position.set(pierX - pierW * 0.3, pierY + 0.09, pierEndZ - 0.65);
     pierGroup.add(crate1, rope);
   }
 
-  addLanternPost(pierX + pierW * 0.36, pierY + 0.04, pierEndZ - 0.06, 1.5, decorations);
+  // Lowered 1.65m pier lantern positioned INSHORE so the pierhead fishing & lighthouse skyline stay spotless!
+  addLanternPost(pierX + pierW * 0.4, pierY + 0.04, deckStartZ + 0.85, 1.65, decorations);
 
   // Boat collision proxies along the pier
-  for (let pz = pierStartZ + 1.4; pz <= pierEndZ - 0.1; pz += 1.45) {
-    townColliders.push({ x: pierX, z: pz, radius: pierW * 0.56 + 0.2 });
+  for (let pz = deckStartZ + 0.4; pz <= pierEndZ - 0.1; pz += 1.4) {
+    townColliders.push({ x: pierX, z: pz, radius: pierW * 0.54 + 0.22 });
   }
 
-  // Walkable deck surface for land walking controller
+  // Smooth walkable deck surface covering BOTH the 5-step stairs AND the flat pierhead!
   walkableDecks.push({
-    minX: pierX - pierW * 0.46,
-    maxX: pierX + pierW * 0.46,
+    minX: pierX - pierW * 0.48,
+    maxX: pierX + pierW * 0.48,
     minZ: pierStartZ - 0.35,
-    maxZ: pierEndZ + 0.1,
+    maxZ: pierEndZ + 0.12,
     getY: (x, z) => {
-      const distFromShore = Math.max(0, z - pierStartZ);
-      const rampBlend = 1.0 - clamp(distFromShore / rampLen, 0, 1);
-      const rampY = pierY + (shoreY - pierY) * rampBlend * rampBlend;
-      return Math.max(rampY, getWorldElevation(pierX, z) + 0.055) + 0.055;
+      if (z <= pierStartZ) return quayY + 0.02;
+      if (z < deckStartZ) {
+        const t = clamp((z - pierStartZ) / stairLen, 0, 1);
+        return THREE.MathUtils.lerp(quayY + 0.02, pierY + 0.055, t);
+      }
+      return pierY + 0.055;
     },
   });
 
-  // Docking anchor for boarding/disembarking!
+  // Docking anchor for seamless boarding/disembarking along the clear West (-X) boat-boarding edge!
   docks.push({
     id,
     nameZh,
-    triggerPos: new THREE.Vector3(pierX, pierY + 0.2, pierEndZ - 0.5),
-    boatMoorPos: new THREE.Vector3(pierX - (pierW * 0.5 + 1.32), 0, pierEndZ - 0.85),
+    triggerPos: new THREE.Vector3(pierX, pierY + 0.22, pierEndZ - 0.55),
+    boatMoorPos: new THREE.Vector3(pierX - (pierW * 0.5 + 1.38), 0, pierEndZ - 0.9),
     boatMoorYaw: 0.06,
-    disembarkPos: new THREE.Vector3(pierX - 0.15, pierY + 0.05, pierEndZ - 0.9),
+    disembarkPos: new THREE.Vector3(pierX - 0.15, pierY + 0.06, pierEndZ - 0.95),
   });
 
   return pierGroup;
@@ -1012,7 +1050,7 @@ export function buildLakesideTown(scene) {
 
     const cosR = Math.cos(rotY);
     const sinR = Math.sin(rotY);
-    const { width, depth, floorY, wallT, doorX, doorW } = cottage.dims;
+    const { width, depth, floorY, wallT, doorX, doorW, porchD = 1.22 } = cottage.dims;
 
     const toLocal = (px, pz) => {
       const dx = px - wx;
@@ -1034,23 +1072,23 @@ export function buildLakesideTown(scene) {
     const doorWorldPos = toWorld(doorX, floorY + 0.65, depth * 0.5);
     const interiorCenterWorld = toWorld(0, floorY + 0.5, 0);
 
-    // Register walkable deck covering interior floor + spacious front porch + steps!
-    const porchExtraZ = hasPorch ? 1.85 : 0.35;
+    // Register walkable deck covering interior floor + spacious v2.1 front porch/vestibule + 2 steps!
+    const porchExtraZ = hasPorch ? porchD + 0.68 : 0.35;
     walkableDecks.push({
       contains: (px, pz) => {
         const { lx, lz } = toLocal(px, pz);
         return (
-          Math.abs(lx) <= width * 0.5 + 0.18 &&
+          Math.abs(lx) <= width * 0.5 + 0.22 &&
           lz >= -depth * 0.5 + 0.05 &&
           lz <= depth * 0.5 + porchExtraZ
         );
       },
       getY: (px, pz) => {
         const { lz } = toLocal(px, pz);
-        if (lz <= depth * 0.5 + (hasPorch ? 1.22 : 0.15)) {
+        if (lz <= depth * 0.5 + (hasPorch ? porchD : 0.15)) {
           return wy + floorY + 0.05;
         }
-        const t = clamp((lz - (depth * 0.5 + 1.22)) / 0.63, 0, 1);
+        const t = clamp((lz - (depth * 0.5 + porchD)) / 0.68, 0, 1);
         const groundY = getWorldElevation(px, pz);
         return THREE.MathUtils.lerp(wy + floorY + 0.05, groundY, t);
       },
@@ -1106,8 +1144,8 @@ export function buildLakesideTown(scene) {
         const halfD = depth * 0.5;
         const pad = actorRadius + wallT * 0.5;
 
-        // Broad-phase check around house footprint + porch
-        if (Math.abs(lx) > halfW + pad + 0.35 || lz < -halfD - pad - 0.3 || lz > halfD + 1.45) return;
+        // Broad-phase check around house footprint + porch + side lean-to shed
+        if (Math.abs(lx) > halfW + pad + 1.55 || lz < -halfD - pad - 0.35 || lz > halfD + porchD + 0.55) return;
 
         let nlx = lx;
         let nlz = lz;
@@ -1164,40 +1202,37 @@ export function buildLakesideTown(scene) {
             pushBox(doorR, halfW, fMinZ, fMaxZ);
           }
           // Swung-open wooden door blade along left edge of doorway (+Z outward onto porch!)
-          pushBox(doorL - 0.05, doorL + 0.09, fMaxZ - 0.02, fMaxZ + 0.84);
+          pushBox(doorL - 0.05, doorL + 0.09, fMaxZ - 0.02, fMaxZ + doorW * 0.92);
         }
 
-        // Porch front railings (keep player & dog from clipping through wooden railings!)
-        if (hasPorch) {
-          const doorClearL = doorX - doorW * 0.5 - 0.24;
-          const doorClearR = doorX + doorW * 0.5 + 0.24;
-          const railZ = halfD + 1.12;
-          if (doorClearL - -halfW * 0.92 > 0.35) {
-            pushBox(-halfW * 0.94, doorClearL, railZ - 0.07, railZ + 0.07);
-          }
-          if (halfW * 0.92 - doorClearR > 0.35) {
-            pushBox(doorClearR, halfW * 0.94, railZ - 0.07, railZ + 0.07);
-          }
-        }
-
-        // Complete Interior Furniture Collision Boxes across ALL 3 enterable houses!
+        // Building-specific porch railings, side lean-to sheds & enlarged v2.1 interior furniture collision!
         if (record.id === 'player_home') {
-          // Aquarium cabinet along back-right
-          pushBox(-0.28, 1.66, -halfD + 0.14, -halfD + 0.92);
-          // Cozy bed along back-left
-          pushBox(-1.92, -0.64, -halfD + 0.16, -halfD + 1.74);
+          // Right-side porch railing & porch bench (leaving left entry around doorX = -0.95 100% open!)
+          const railZ = halfD + porchD - 0.12;
+          pushBox(-0.08, halfW * 0.94, railZ - 0.08, railZ + 0.08);
+          pushBox(0.72, 2.04, halfD + 0.18, halfD + 0.66);
+          // Enlarged glass aquarium cabinet along back-right
+          pushBox(-0.22, 2.04, -halfD + 0.14, -halfD + 0.94);
+          // Cozy gingham bed along back-left
+          pushBox(-2.20, -0.84, -halfD + 0.18, -halfD + 1.88);
           // Nightstand & lamp on right wall
-          pushBox(1.4, 1.94, 0.2, 0.72);
+          pushBox(1.80, 2.46, 0.04, 0.68);
         } else if (record.id === 'artisan_workshop') {
-          // Workbench along back wall
-          pushBox(-1.02, 1.22, -halfD + 0.14, -halfD + 0.94);
-          // Fishing rod display rack along left wall
-          pushBox(-halfW + 0.14, -halfW + 0.56, -0.86, 0.58);
+          // Signature East (+X) Side Lean-To Tool Shed exterior solid footprint
+          pushBox(halfW - 0.05, halfW + 1.38, -1.56, 0.66);
+          // Single-side outdoor rod workbench on left front awning (right cargo lane stays wide open!)
+          pushBox(-1.90, -0.40, halfD + 0.22, halfD + 0.84);
+          // Enlarged tackle workbench along back wall
+          pushBox(-1.40, 1.40, -halfD + 0.14, -halfD + 0.92);
+          // Standing 5-rod display rack along left wall
+          pushBox(-halfW + 0.14, -halfW + 0.60, -0.78, 0.72);
         } else if (record.id === 'neighbor_east') {
-          // Round wood dining table
-          pushBox(-0.06, 0.96, -0.96, 0.06);
-          // Bookshelf along back-left wall
-          pushBox(-1.35, -0.15, -halfD + 0.14, -halfD + 0.56);
+          // Low stone cheek wall beside west vestibule steps
+          pushBox(-0.08, 0.22, halfD + porchD - 0.08, halfD + porchD + 0.68);
+          // Enlarged round tea table
+          pushBox(-0.18, 1.02, -0.58, 0.64);
+          // Coastal bookcase along back-left wall
+          pushBox(-1.58, -0.06, -halfD + 0.14, -halfD + 0.68);
         }
 
         if (nlx !== lx || nlz !== lz) {
@@ -1213,19 +1248,24 @@ export function buildLakesideTown(scene) {
   }
 
   // =========================================================================
-  // 1. PLAYER'S OWN SEAMLESS WALK-IN WATERSIDE HOME + LIVE AQUARIUM + PIER
+  // 1. v2.1 ENLARGED PLAYER HERO HOME (5.4x4.4m) + CURVED STONE QUAY + PROMENADE + 5-STEP PIERS
   // =========================================================================
-  const homeX = 3.6;
-  const homeZ = -20.8;
+  const homeX = 3.2;
+  const homeZ = -24.5;
   const homeY = getWorldElevation(homeX, homeZ);
 
   const playerHomeCottage = createCottage({
     id: 'player_home',
     nameZh: '我的临水小屋',
-    width: 4.2,
-    depth: 3.4,
-    wallHeight: 1.92,
-    roofHeight: 1.32,
+    width: 5.4,
+    depth: 4.4,
+    wallHeight: 2.08,
+    roofHeight: 1.62,
+    floorY: 0.28,
+    doorX: -0.95,
+    doorW: 1.12,
+    doorH: 1.75,
+    porchD: 1.48,
     wallMat: stuccoCream,
     roofMat: roofRed,
     trimMat: timberMat,
@@ -1242,44 +1282,111 @@ export function buildLakesideTown(scene) {
   });
   const playerHome = registerEnterableBuilding(playerHomeCottage, homeX, homeY, homeZ, 0.04, true);
 
-  // Warm porch lantern light at the player's doorway
-  const homeLight = new THREE.PointLight(0xffcb6e, 1.05, 8.5, 1.7);
-  homeLight.position.set(homeX - 0.1, homeY + 1.55, homeZ + 2.2);
+  // Warm porch lantern light at the player's enlarged doorway
+  const homeLight = new THREE.PointLight(0xffcb6e, 1.15, 9.2, 1.7);
+  homeLight.position.set(homeX - 0.1, homeY + 1.95, homeZ + 3.6);
   townGroup.add(homeLight);
-  warmLights.push({ light: homeLight, base: 1.05 });
+  warmLights.push({ light: homeLight, base: 1.15 });
 
-  // Solid grounded stone courtyard terrace linking Player's Porch smoothly to the Pier Head!
-  // Deep stone foundation skirt ensures it NEVER floats over the shoreline slope, and registered in walkableDecks!
-  const courtyardMinX = homeX - 2.35;
-  const courtyardMaxX = homeX + 2.35;
-  const courtyardMinZ = homeZ + 1.55; // -19.25 (under porch edge)
-  const courtyardMaxZ = -17.35; // stops cleanly right at the top of the wooden pier ramp!
-  const courtyardW = courtyardMaxX - courtyardMinX;
-  const courtyardD = courtyardMaxZ - courtyardMinZ;
-  const courtyardTopY = homeY + 0.04;
+  // ---- v2.1 CURVED STONE RETAINING SEAWALL & CONTINUOUS 2.5m PAVED PROMENADE ----
+  const quayCapMat = new THREE.MeshStandardMaterial({ color: 0xc9c0ae, roughness: 0.88 });
+  const quayWallMat = new THREE.MeshStandardMaterial({ color: 0x918a7b, roughness: 0.92 });
+  const quayRockMat = new THREE.MeshStandardMaterial({ color: 0x969184, roughness: 0.92, flatShading: true });
 
-  const courtyardSlab = new THREE.Mesh(new THREE.BoxGeometry(courtyardW, 0.14, courtyardD), cobbleMat);
-  courtyardSlab.position.set(homeX, courtyardTopY - 0.07, (courtyardMinZ + courtyardMaxZ) * 0.5);
-  courtyardSlab.receiveShadow = true;
-  const courtyardBase = new THREE.Mesh(
-    new THREE.BoxGeometry(courtyardW - 0.08, 1.35, courtyardD - 0.08),
-    stoneMat
-  );
-  courtyardBase.position.set(homeX, courtyardTopY - 0.78, (courtyardMinZ + courtyardMaxZ) * 0.5);
-  courtyardBase.receiveShadow = true;
-  townGroup.add(courtyardSlab, courtyardBase);
+  // 1a. Curved Stone Retaining Quay Wall following exact getShoreZ(x) across Central Crescent Bay [-10.0 .. +11.6]!
+  const quaySegs = 28;
+  const quayStartX = -10.2;
+  const quayEndX = 11.8;
+  for (let i = 0; i < quaySegs; i++) {
+    const x0 = quayStartX + (i / quaySegs) * (quayEndX - quayStartX);
+    const x1 = quayStartX + ((i + 1) / quaySegs) * (quayEndX - quayStartX);
+    const z0 = getShoreZ(x0);
+    const z1 = getShoreZ(x1);
+    const xm = (x0 + x1) * 0.5;
+    const zm = (z0 + z1) * 0.5;
+    const len = Math.hypot(x1 - x0, z1 - z0) + 0.14;
+    const ang = -Math.atan2(z1 - z0, x1 - x0);
 
+    // Retaining wall masonry body (Y = -0.45 -> +1.12)
+    const wallSeg = new THREE.Mesh(new THREE.BoxGeometry(len, 1.56, 0.72), quayWallMat);
+    wallSeg.position.set(xm, 0.34, zm - 0.18);
+    wallSeg.rotation.y = ang;
+    wallSeg.castShadow = true;
+    wallSeg.receiveShadow = true;
+    townGroup.add(wallSeg);
+
+    // Pale limestone coping cap along seawall edge (Y = +1.145)
+    const capSeg = new THREE.Mesh(new THREE.BoxGeometry(len + 0.02, 0.13, 0.62), quayCapMat);
+    capSeg.position.set(xm, 1.10, zm - 0.14);
+    capSeg.rotation.y = ang;
+    capSeg.castShadow = true;
+    capSeg.receiveShadow = true;
+    townGroup.add(capSeg);
+  }
+
+  // 1b. Continuous Smooth Curved Cobblestone Promenade Ribbon (2.6m wide, ends cleanly beside East Pier!)
+  const promPts = 36;
+  const promStartX = -13.0;
+  const promEndX = 13.3;
+  const promPos = [];
+  const promUV = [];
+  const promIdx = [];
+  const promW = 2.65;
+  for (let i = 0; i <= promPts; i++) {
+    const t = i / promPts;
+    const px = promStartX + t * (promEndX - promStartX);
+    const zFront = getShoreZ(px) - 0.28;
+    const zBack = zFront - promW;
+    const py = 1.152;
+    promPos.push(px, py, zFront, px, py, zBack);
+    promUV.push(t * 14.0, 0, t * 14.0, 1.35);
+    if (i < promPts) {
+      const a = i * 2;
+      promIdx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+    }
+  }
+  const promGeo = new THREE.BufferGeometry();
+  promGeo.setAttribute('position', new THREE.Float32BufferAttribute(promPos, 3));
+  promGeo.setAttribute('uv', new THREE.Float32BufferAttribute(promUV, 2));
+  promGeo.setIndex(promIdx);
+  promGeo.computeVertexNormals();
+  const promMesh = new THREE.Mesh(promGeo, cobbleMat);
+  promMesh.receiveShadow = true;
+  townGroup.add(promMesh);
+
+  // Register smooth walkable deck along entire crescent promenade!
   walkableDecks.push({
-    minX: courtyardMinX - 0.1,
-    maxX: courtyardMaxX + 0.1,
-    minZ: courtyardMinZ - 0.15,
-    maxZ: courtyardMaxZ + 0.15,
-    getY: () => courtyardTopY + 0.01,
+    contains: (px, pz) => {
+      if (px < promStartX - 0.2 || px > promEndX + 0.2) return false;
+      const zS = getShoreZ(px);
+      return pz <= zS - 0.15 && pz >= zS - promW - 0.45;
+    },
+    getY: () => 1.16,
   });
 
-  // ---- RESERVED FUTURE FARMING PLOT (Sunny Garden Plot beside Player's Cottage!) ----
-  const farmX = -0.35;
-  const farmZ = -21.2;
+  // Waterline coastal boulders naturally breaking the stone quay & west/east rocky coves!
+  const shoreBoulders = [
+    [-12.2, 0.4, 0.85], [-10.8, 0.2, 0.72], [-9.2, 0.45, 0.62],
+    [-3.6, 0.48, 0.56], [-1.2, 0.42, 0.68], [1.4, 0.45, 0.54],
+    [7.4, 0.46, 0.64], [9.6, 0.42, 0.72], [11.8, 0.35, 0.86],
+    [13.0, 0.5, 0.78], [16.2, 0.3, 0.95], [17.8, 0.1, 1.15],
+  ];
+  for (let i = 0; i < shoreBoulders.length; i++) {
+    const [bx, zOff, br] = shoreBoulders[i];
+    const bz = getShoreZ(bx) + zOff;
+    const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(br, 1), quayRockMat);
+    rock.scale.set(1.25, 0.68, 1.05);
+    rock.position.set(bx, 0.14 + (i % 3) * 0.08, bz);
+    rock.rotation.set(i * 0.6, i * 1.1, 0.2);
+    rock.castShadow = true;
+    rock.receiveShadow = true;
+    townGroup.add(rock);
+    landCircleColliders.push({ x: bx, z: bz, radius: br * 0.92 });
+  }
+
+  // ---- RESERVED FUTURE FARMING PLOT (Fenced Sunny Garden Plot between Player's Home & Workshop!) ----
+  const farmX = -2.2;
+  const farmZ = -24.0;
   const farmY = getWorldElevation(farmX, farmZ);
   const farmGroup = new THREE.Group();
   farmGroup.position.set(farmX, farmY, farmZ);
@@ -1288,9 +1395,8 @@ export function buildLakesideTown(scene) {
   const soilBedMat = new THREE.MeshStandardMaterial({ color: 0x7c5a3c, roughness: 0.96 });
   const cloverMat = new THREE.MeshStandardMaterial({ color: 0x7aa94c, roughness: 0.9 });
 
-  // 3×4 neat low wooden garden plot frame with soft loamy soil + wild clover tufts
-  const plotW = 2.65;
-  const plotD = 2.15;
+  const plotW = 2.95;
+  const plotD = 2.35;
   const frameTop = new THREE.Mesh(new THREE.BoxGeometry(plotW + 0.18, 0.12, 0.12), soilBorderMat);
   frameTop.position.set(0, 0.06, -plotD * 0.5);
   const frameBot = frameTop.clone();
@@ -1304,38 +1410,52 @@ export function buildLakesideTown(scene) {
   soilPad.receiveShadow = true;
   farmGroup.add(frameTop, frameBot, frameLeft, frameRight, soilPad);
 
-  // 12 individual soil mounds (3 rows × 4 cols — future seed/crop tiles!)
+  // Charming low wooden garden fence corners & back/side rails (open front entry!)
+  for (const fx of [-plotW * 0.5 - 0.12, plotW * 0.5 + 0.12]) {
+    for (const fz of [-plotD * 0.5 - 0.12, 0, plotD * 0.5 + 0.12]) {
+      const fp = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.54, 0.09), darkTimberMat);
+      fp.position.set(fx, 0.27, fz);
+      fp.castShadow = true;
+      farmGroup.add(fp);
+    }
+    const sideRail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, plotD + 0.24), timberMat);
+    sideRail.position.set(fx, 0.42, 0);
+    farmGroup.add(sideRail);
+  }
+  const backRail = new THREE.Mesh(new THREE.BoxGeometry(plotW + 0.28, 0.06, 0.06), timberMat);
+  backRail.position.set(0, 0.42, -plotD * 0.5 - 0.12);
+  farmGroup.add(backRail);
+
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 4; c++) {
-      const tile = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.05, 0.54), cloverMat);
-      tile.position.set(-0.9 + c * 0.6, 0.075, -0.62 + r * 0.62);
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.05, 0.58), cloverMat);
+      tile.position.set(-0.99 + c * 0.66, 0.075, -0.68 + r * 0.68);
       tile.receiveShadow = true;
       farmGroup.add(tile);
     }
   }
 
-  // Cute wooden signpost at the garden corner
-  const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.045, 0.72, 7), darkTimberMat);
-  signPost.position.set(plotW * 0.5 + 0.16, 0.36, plotD * 0.5 - 0.1);
-  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.24, 0.05), timberMat);
-  signBoard.position.set(plotW * 0.5 + 0.16, 0.62, plotD * 0.5 - 0.1);
-  signBoard.rotation.y = -0.25;
+  const signPost = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.048, 0.78, 7), darkTimberMat);
+  signPost.position.set(plotW * 0.5 + 0.22, 0.39, plotD * 0.5 + 0.06);
+  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.26, 0.05), timberMat);
+  signBoard.position.set(plotW * 0.5 + 0.22, 0.68, plotD * 0.5 + 0.06);
+  signBoard.rotation.y = -0.22;
   farmGroup.add(signPost, signBoard);
   townGroup.add(farmGroup);
 
-  const farmPlotAnchor = new THREE.Vector3(farmX, farmY + 0.4, farmZ + plotD * 0.5 + 0.25);
+  const farmPlotAnchor = new THREE.Vector3(farmX, farmY + 0.4, farmZ + plotD * 0.5 + 0.32);
 
-  // ---- 3 WALKABLE WOODEN PIERS ----
-  // Pier 1: Player's Home Pier (starts cleanly flush against the front edge of the stone courtyard at z = -17.4!)
+  // ---- 3 CRISP v2.1 5-STEP TIERED WOODEN PIERS (1.14m Quay -> 5 Stairs -> 0.44m Deck!) ----
   townGroup.add(
     buildWoodenPier({
       id: 'dock_home',
       nameZh: '自家小屋码头',
-      pierX: 3.6,
-      pierStartZ: -17.42,
-      pierEndZ: -12.6,
+      pierX: 4.2,
+      pierStartZ: getShoreZ(4.2) - 0.15,
+      pierEndZ: -11.6,
       pierY: 0.44,
-      pierW: 2.08,
+      quayY: 1.14,
+      pierW: 2.35,
       timberMat,
       darkTimberMat,
       rng,
@@ -1347,15 +1467,36 @@ export function buildLakesideTown(scene) {
     })
   );
 
-  // Pier 2: Fish Market & Workshop Pier (clean shoreline start with zero plank poking into the village lane!)
   townGroup.add(
     buildWoodenPier({
       id: 'dock_market',
       nameZh: '渔市集码头',
-      pierX: -5.6,
-      pierStartZ: -17.35,
-      pierEndZ: -13.1,
+      pierX: -6.8,
+      pierStartZ: getShoreZ(-6.8) - 0.15,
+      pierEndZ: -11.8,
       pierY: 0.44,
+      quayY: 1.14,
+      pierW: 2.15,
+      timberMat,
+      darkTimberMat,
+      rng,
+      addLanternPost,
+      townColliders,
+      walkableDecks,
+      docks,
+      decorations: false,
+    })
+  );
+
+  townGroup.add(
+    buildWoodenPier({
+      id: 'dock_lighthouse',
+      nameZh: '东海角灯塔栈桥',
+      pierX: 14.2,
+      pierStartZ: getShoreZ(14.2) + 0.12,
+      pierEndZ: -9.6,
+      pierY: 0.44,
+      quayY: 1.14,
       pierW: 1.95,
       timberMat,
       darkTimberMat,
@@ -1368,43 +1509,27 @@ export function buildLakesideTown(scene) {
     })
   );
 
-  // Pier 3: Eastern Lighthouse Jetty (below Uncle Hai's Lighthouse!)
-  townGroup.add(
-    buildWoodenPier({
-      id: 'dock_lighthouse',
-      nameZh: '东海角灯塔栈桥',
-      pierX: 14.0,
-      pierStartZ: -15.9,
-      pierEndZ: -11.6,
-      pierY: 0.44,
-      pierW: 1.75,
-      timberMat,
-      darkTimberMat,
-      rng,
-      addLanternPost,
-      townColliders,
-      walkableDecks,
-      docks,
-      decorations: false,
-    })
-  );
-
   // =========================================================================
-  // 2. NEIGHBORING LAKESIDE VILLAGE COTTAGES (2 MORE SEAMLESS WALK-IN HOUSES!)
+  // 2. ENLARGED DIFFERENTIATED NEIGHBOR COTTAGES & STAGGERED HILLSIDE BACK ROW
   // =========================================================================
   const villageHouses = [
     {
       id: 'artisan_workshop',
       nameZh: '老周渔具工坊',
-      x: -4.8,
-      z: -22.6,
-      rot: 0.22,
-      w: 3.55,
-      d: 2.9,
-      h: 1.82,
-      rh: 1.22,
+      x: -8.4,
+      z: -23.6,
+      rot: 0.16,
+      w: 4.6,
+      d: 3.8,
+      h: 2.02,
+      rh: 1.08,
+      floorY: 0.24,
+      doorX: 0.68,
+      doorW: 1.22,
+      doorH: 1.78,
+      porchD: 1.25,
       wall: stuccoOchre,
-      roof: roofTerracotta,
+      roof: roofSlate,
       shutter: shutterBlue,
       porch: true,
       dormer: false,
@@ -1414,26 +1539,32 @@ export function buildLakesideTown(scene) {
     {
       id: 'neighbor_east',
       nameZh: '东岸木屋',
-      x: 10.6,
-      z: -21.0,
-      rot: -0.22,
-      w: 3.25,
-      d: 2.75,
-      h: 1.76,
-      rh: 1.18,
+      x: 10.8,
+      z: -22.8,
+      rot: -0.2,
+      w: 4.3,
+      d: 3.6,
+      h: 2.02,
+      rh: 1.23,
+      floorY: 0.28,
+      doorX: -0.78,
+      doorW: 1.06,
+      doorH: 1.7,
+      porchD: 1.05,
       wall: stuccoCream,
-      roof: roofSlate,
-      shutter: shutterBlue,
+      roof: roofTerracotta,
+      shutter: shutterGreen,
       porch: true,
       dormer: false,
       enterable: true,
       interiorTheme: 'neighbor',
     },
-    { x: -10.2, z: -20.8, rot: 0.42, w: 2.5, d: 2.1, h: 1.62, rh: 1.12, wall: stuccoSage, roof: roofSlate, shutter: shutterTeal, porch: false, dormer: false },
-    { x: -1.4, z: -27.2, rot: 0.14, w: 3.1, d: 2.4, h: 1.95, rh: 1.25, wall: stuccoPeach, roof: roofRed, shutter: shutterGreen, porch: false, dormer: true },
-    { x: 7.4, z: -27.2, rot: -0.15, w: 2.9, d: 2.3, h: 1.85, rh: 1.22, wall: stuccoOchre, roof: roofRed, shutter: shutterTeal, porch: false, dormer: false },
-    { x: -8.2, z: -26.8, rot: 0.32, w: 2.6, d: 2.2, h: 1.76, rh: 1.14, wall: stuccoCream, roof: roofTerracotta, shutter: shutterGreen, porch: false, dormer: false },
-    { x: 14.8, z: -23.6, rot: -0.45, w: 2.4, d: 2.0, h: 1.6, rh: 1.1, wall: stuccoPeach, roof: roofTerracotta, shutter: shutterTeal, porch: false, dormer: false },
+    // West flank cottage + 5 staggered multi-tier hillside back-row cottages!
+    { x: -14.8, z: -21.2, rot: 0.34, w: 3.4, d: 2.8, h: 1.85, rh: 1.22, wall: stuccoSage, roof: roofSlate, shutter: shutterTeal, porch: false, dormer: false },
+    { x: -12.6, z: -29.6, rot: 0.24, w: 3.8, d: 3.0, h: 2.0, rh: 1.25, wall: stuccoCream, roof: roofTerracotta, shutter: shutterGreen, porch: false, dormer: false },
+    { x: -3.2, z: -31.2, rot: 0.08, w: 4.2, d: 3.2, h: 2.1, rh: 1.38, wall: stuccoPeach, roof: roofRed, shutter: shutterTeal, porch: false, dormer: true },
+    { x: 6.4, z: -31.6, rot: -0.1, w: 3.9, d: 3.1, h: 2.02, rh: 1.32, wall: stuccoOchre, roof: roofSlate, shutter: shutterBlue, porch: false, dormer: false },
+    { x: 15.8, z: -27.2, rot: -0.35, w: 3.6, d: 2.9, h: 1.9, rh: 1.24, wall: stuccoPeach, roof: roofRed, shutter: shutterTeal, porch: false, dormer: false },
   ];
 
   for (const vh of villageHouses) {
@@ -1445,6 +1576,11 @@ export function buildLakesideTown(scene) {
       depth: vh.d,
       wallHeight: vh.h,
       roofHeight: vh.rh,
+      floorY: vh.floorY ?? 0.14,
+      doorX: vh.doorX ?? null,
+      doorW: vh.doorW ?? null,
+      doorH: vh.doorH ?? null,
+      porchD: vh.porchD ?? 1.22,
       wallMat: vh.wall,
       roofMat: vh.roof,
       trimMat: timberMat,
@@ -1468,7 +1604,7 @@ export function buildLakesideTown(scene) {
       townGroup.add(house.group);
       landCircleColliders.push({ x: vh.x, z: vh.z, radius: Math.max(vh.w, vh.d) * 0.56 });
 
-      if (house.chimneyTopLocal && rng() < 0.55) {
+      if (house.chimneyTopLocal && rng() < 0.6) {
         house.group.updateMatrixWorld(true);
         const wp = house.chimneyTopLocal.clone().applyMatrix4(house.group.matrixWorld);
         smokeSources.push(wp);
@@ -1477,64 +1613,62 @@ export function buildLakesideTown(scene) {
   }
 
   // =========================================================================
-  // 3. COZY LAKESIDE FISH MARKET STALL & COBBLESTONE VILLAGE LANE
+  // 3. v2.1 FISH MARKET STALL (GLB HOT-SWAPPABLE) & SCENIC CLIFF PATH
   // =========================================================================
-  const stallX = -6.8;
-  const stallZ = -19.1;
+  const landmarks = {};
+  const stallX = -8.05;
+  const stallZ = -19.55;
   const stallY = getWorldElevation(stallX, stallZ);
   const stall = new THREE.Group();
 
-  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.1, 0.72, 0.92), timberMat);
-  counter.position.set(0, 0.36, 0);
+  const counter = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.7, 0.76), timberMat);
+  counter.position.set(0, 0.35, 0);
   counter.castShadow = true;
   counter.receiveShadow = true;
   stall.add(counter);
 
-  for (const px of [-0.96, 0.96]) {
-    for (const pz of [-0.38, 0.38]) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 1.7, 6), darkTimberMat);
-      p.position.set(px, 0.85, pz);
+  for (const px of [-1.25, 1.25]) {
+    for (const pz of [-0.36, 0.36]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 2.0, 6), darkTimberMat);
+      p.position.set(px, 1.0, pz);
       stall.add(p);
     }
   }
   const stripeRed = new THREE.MeshStandardMaterial({ color: 0xd14f38, roughness: 0.85 });
   const stripeCream = new THREE.MeshStandardMaterial({ color: 0xf7eedc, roughness: 0.85 });
-  for (let s = 0; s < 5; s++) {
+  for (let s = 0; s < 6; s++) {
     const strip = new THREE.Mesh(
-      new THREE.BoxGeometry(0.46, 0.06, 1.35),
+      new THREE.BoxGeometry(0.48, 0.06, 1.6),
       s % 2 === 0 ? stripeRed : stripeCream
     );
-    strip.position.set(-0.92 + s * 0.46, 1.72, 0.05);
+    strip.position.set(-1.2 + s * 0.48, 2.06, 0.08);
     strip.rotation.x = 0.22;
     strip.castShadow = true;
     stall.add(strip);
   }
-  for (const bx of [-1.4, -1.78]) {
-    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.58, 10), darkTimberMat);
-    barrel.position.set(bx, 0.29, 0.15);
-    barrel.castShadow = true;
-    stall.add(barrel);
-  }
   stall.position.set(stallX, stallY, stallZ);
-  stall.rotation.y = 0.22;
+  stall.rotation.y = 0.16;
   townGroup.add(stall);
-  landCircleColliders.push({ x: stallX, z: stallZ, radius: 1.15 });
+  landmarks.market_stall = stall;
+  landCircleColliders.push({ x: stallX, z: stallZ, radius: 1.35 });
+  // West hanging dried-fish rack collider
+  landCircleColliders.push({ x: stallX - 2.35, z: stallZ - 0.3, radius: 0.65 });
 
-  // Stepping cobblestone path connecting all 3 piers, player home, garden, market, and lighthouse!
+  // Stepping stone flagstones climbing smoothly from East Promenade (x=13.3) past East Pier up to Rocky Lighthouse Cliff!
   const lanePoints = [
-    [-11.5, -18.5],
-    [-8.6, -18.8],
-    [-5.6, -18.5],
-    [-2.5, -19.2],
-    [0.2, -19.0],
-    [3.6, -18.6],
-    [7.2, -18.8],
-    [10.6, -18.6],
-    [13.8, -17.6],
-    [16.2, -16.8],
+    [-12.5, -18.5],
+    [-8.5, -18.8],
+    [-4.5, -19.2],
+    [0.0, -19.5],
+    [4.2, -19.2],
+    [9.2, -18.2],
+    [13.4, -16.4],
+    [15.8, -15.7],
+    [18.0, -15.0],
+    [19.8, -14.5],
   ];
   let stoneIdx = 0;
-  for (let i = 0; i < lanePoints.length - 1; i++) {
+  for (let i = 6; i < lanePoints.length - 1; i++) {
     const [x0, z0] = lanePoints[i];
     const [x1, z1] = lanePoints[i + 1];
     const steps = 4;
@@ -1543,18 +1677,11 @@ export function buildLakesideTown(scene) {
       const sx = x0 + (x1 - x0) * t;
       const sz = z0 + (z1 - z0) * t;
       const sy = getWorldElevation(sx, sz);
-      if (sy < 0.25) continue;
-      // Skip placing loose cobbles inside the solid stone courtyard right in front of player's house
-      if (sx > 1.0 && sx < 6.2 && sz > -19.6 && sz < -17.0) continue;
-      // Deterministic micro-height stagger + slightly tighter stone discs -> ZERO coplanar Z-fighting!
-      const yStagger = (stoneIdx % 7) * 0.0055;
+      if (sy < 0.35) continue;
+      const yStagger = (stoneIdx % 5) * 0.005;
       stoneIdx += 1;
-      const topR = 0.44 + rng() * 0.13;
-      const stone = new THREE.Mesh(
-        new THREE.CylinderGeometry(topR, topR + 0.09, 0.14, 9),
-        cobbleMat
-      );
-      stone.position.set(sx, sy - 0.018 + yStagger, sz);
+      const stone = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.58, 0.14, 9), cobbleMat);
+      stone.position.set(sx, sy - 0.015 + yStagger, sz);
       stone.rotation.y = rng() * Math.PI;
       stone.receiveShadow = true;
       townGroup.add(stone);
@@ -1562,67 +1689,91 @@ export function buildLakesideTown(scene) {
   }
 
   for (const [lx, lz] of [
-    [-8.6, -18.2],
-    [-2.2, -18.9],
-    [7.4, -18.4],
-    [13.1, -17.9],
+    [-10.4, getShoreZ(-10.4) - 2.2],
+    [-3.8, getShoreZ(-3.8) - 2.2],
+    [0.6, getShoreZ(0.6) - 2.2],
+    [7.8, getShoreZ(7.8) - 2.2],
+    [14.2, getShoreZ(14.2) - 2.1],
+    [18.0, -15.1],
   ]) {
-    addLanternPost(lx, getWorldElevation(lx, lz), lz, 1.75, false);
+    addLanternPost(lx, getWorldElevation(lx, lz), lz, 1.82, false);
   }
 
   // =========================================================================
-  // 4. EASTERN HEADLAND STONE LIGHTHOUSE
+  // 4. v2.1 DRAMATIC ROCKY HEADLAND 7.8m COASTAL LIGHTHOUSE (GLB HOT-SWAPPABLE!)
   // =========================================================================
-  const lhX = 17.2;
-  const lhZ = -16.2;
+  const lhX = 21.8;
+  const lhZ = -15.2;
   const lhY = getWorldElevation(lhX, lhZ);
   const lighthouse = new THREE.Group();
 
-  const lhPlinth = new THREE.Mesh(new THREE.CylinderGeometry(1.42, 1.72, 1.4, 12), stoneMat);
-  lhPlinth.position.y = -0.35;
+  const lhPlinth = new THREE.Mesh(new THREE.CylinderGeometry(1.36, 1.68, 1.6, 14), stoneMat);
+  lhPlinth.position.y = -0.3;
   lhPlinth.castShadow = true;
   lhPlinth.receiveShadow = true;
-
-  const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 1.15, 1.6, 14), stuccoCream);
-  seg1.position.y = 1.05;
-  seg1.castShadow = true;
-  const seg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.95, 1.15, 14), roofRed);
-  seg2.position.y = 2.42;
-  seg2.castShadow = true;
-  const seg3 = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.82, 1.25, 14), stuccoCream);
-  seg3.position.y = 3.62;
-  seg3.castShadow = true;
-
-  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.82, 0.22, 14), ironMat);
-  gallery.position.y = 4.35;
-  const beaconGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.56, 0.82, 12), lanternGlassMat);
-  beaconGlass.position.y = 4.86;
-  const cupola = new THREE.Mesh(new THREE.ConeGeometry(0.76, 0.78, 12), roofRed);
-  cupola.position.y = 5.64;
+  const seg1 = new THREE.Mesh(new THREE.CylinderGeometry(1.06, 1.16, 1.3, 14), stuccoCream);
+  seg1.position.y = 1.25;
+  const seg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.96, 1.06, 1.2, 14), roofRed);
+  seg2.position.y = 2.48;
+  const seg3 = new THREE.Mesh(new THREE.CylinderGeometry(0.86, 0.96, 1.2, 14), stuccoCream);
+  seg3.position.y = 3.65;
+  const seg4 = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.86, 1.12, 14), roofRed);
+  seg4.position.y = 4.78;
+  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(1.06, 0.92, 0.22, 14), ironMat);
+  gallery.position.y = 5.44;
+  const beaconGlass = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 0.96, 12), lanternGlassMat);
+  beaconGlass.position.y = 6.02;
+  const cupola = new THREE.Mesh(new THREE.ConeGeometry(0.92, 1.0, 14), roofRed);
+  cupola.position.y = 7.0;
 
   const beaconPivot = new THREE.Group();
-  beaconPivot.position.y = 4.88;
-  const lhLight = new THREE.PointLight(0xffd782, 1.4, 14, 1.6);
+  beaconPivot.name = 'Lighthouse_BeaconPivot';
+  beaconPivot.position.y = 6.02;
+  const lhLight = new THREE.PointLight(0xffd782, 1.6, 16, 1.5);
   beaconPivot.add(lhLight);
-  warmLights.push({ light: lhLight, base: 1.4 });
+  warmLights.push({ light: lhLight, base: 1.6 });
 
-  lighthouse.add(lhPlinth, seg1, seg2, seg3, gallery, beaconGlass, cupola, beaconPivot);
+  lighthouse.add(lhPlinth, seg1, seg2, seg3, seg4, gallery, beaconGlass, cupola, beaconPivot);
   lighthouse.position.set(lhX, lhY, lhZ);
   townGroup.add(lighthouse);
+  landmarks.lighthouse = lighthouse;
   landCircleColliders.push({ x: lhX, z: lhZ, radius: 1.65 });
+  // Keeper shed collider beside lighthouse (-2.05, -0.62 in glTF Z)
+  landCircleColliders.push({ x: lhX - 2.05, z: lhZ - 0.62, radius: 1.15 });
+
+  // Sculpted dramatic coastal cliff boulders ringing the two-tiered Lighthouse Headland!
+  const cliffRocks = [
+    [24.2, -12.4, 2.05], [25.6, -15.4, 2.25], [22.2, -11.4, 1.85],
+    [19.2, -11.8, 1.55], [24.4, -18.2, 1.95], [17.4, -12.8, 1.35],
+    [26.2, -13.2, 1.65], [20.6, -10.6, 1.32],
+  ];
+  for (let i = 0; i < cliffRocks.length; i++) {
+    const [rx, rz, rr] = cliffRocks[i];
+    const ry = getWorldElevation(rx, rz);
+    const cr = new THREE.Mesh(new THREE.DodecahedronGeometry(rr, 1), quayRockMat);
+    cr.scale.set(1.22, 0.85, 1.12);
+    cr.position.set(rx, Math.max(-0.15, ry - rr * 0.22), rz);
+    cr.rotation.set(i * 0.45, i * 0.9, 0.18);
+    cr.castShadow = true;
+    cr.receiveShadow = true;
+    townGroup.add(cr);
+    landCircleColliders.push({ x: rx, z: rz, radius: rr * 0.95 });
+  }
 
   // =========================================================================
-  // 5. PAINTERLY TREES & FLOWERING BUSHES (KEEPING WALKWAYS & FARM PLOT OPEN!)
+  // 5. PAINTERLY TREES & FLOWERING BUSHES (KEEPING ENLARGED VILLAGE, PROMENADE & CLIFF PATH OPEN!)
   // =========================================================================
   const houseExclusion = [
-    { x: homeX, z: homeZ, r: 4.1 },
-    { x: homeX, z: -16.5, r: 2.6 },
-    { x: farmX, z: farmZ, r: 2.65 },
-    { x: -5.6, z: -16.0, r: 2.4 },
-    { x: 14.0, z: -14.2, r: 2.3 },
-    { x: stallX, z: stallZ, r: 2.4 },
-    { x: lhX, z: lhZ, r: 2.8 },
-    ...villageHouses.map((h) => ({ x: h.x, z: h.z, r: 3.4 })),
+    { x: homeX, z: homeZ, r: 5.2 },
+    { x: 4.2, z: -17.5, r: 2.8 },
+    { x: farmX, z: farmZ, r: 3.1 },
+    { x: -6.8, z: -17.0, r: 2.7 },
+    { x: 14.2, z: -14.8, r: 2.6 },
+    { x: stallX, z: stallZ, r: 3.2 },
+    { x: stallX - 2.2, z: stallZ, r: 2.2 },
+    { x: lhX, z: lhZ, r: 4.2 },
+    { x: 19.65, z: -14.35, r: 2.4 },
+    ...villageHouses.map((h) => ({ x: h.x, z: h.z, r: Math.max(h.w, h.d) * 0.85 + 1.2 })),
   ];
 
   const treeSpots = [
@@ -1792,12 +1943,27 @@ export function buildLakesideTown(scene) {
     enterableBuildings,
     playerHome,
     farmPlotAnchor,
-    homeViewTarget: new THREE.Vector3(3.6, 1.15, -18.2),
+    homeViewTarget: new THREE.Vector3(2.8, 1.5, -20.5),
     pierDockSpot: docks[0].boatMoorPos,
     isWalkableDeck,
     isWalkableLand,
     getWalkableElevation,
     resolveLandCollisions,
+
+    /**
+     * Hot-swaps the Fish Market Stall (`market_stall`) or Coastal Lighthouse (`lighthouse`)
+     * with its 2048px Cycles-baked Blender GLB while preserving live PointLight beacons!
+     */
+    attachLandmarkGlb(landmarkId, glbData) {
+      const target = landmarks[landmarkId];
+      if (!target || !glbData || !glbData.model) return false;
+      for (const ch of target.children) {
+        if (ch.name === 'Lighthouse_BeaconPivot' || ch.isLight) continue;
+        ch.visible = false;
+      }
+      target.add(glbData.model);
+      return true;
+    },
 
     syncHomeAquarium(fishList) {
       if (playerHome && playerHome.aquarium) {

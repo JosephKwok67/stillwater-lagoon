@@ -176,6 +176,13 @@ fetchAssetManifest().then(async (manifest) => {
         .catch((err) => console.warn(`[GLB] ${bId} load failed:`, err));
     }
   }
+  for (const lmId of ['market_stall', 'lighthouse']) {
+    if (bldFlags[lmId] && MODEL_PATHS.buildings[lmId] && town.attachLandmarkGlb) {
+      loadBuildingGlb(MODEL_PATHS.buildings[lmId])
+        .then((data) => town.attachLandmarkGlb(lmId, data))
+        .catch((err) => console.warn(`[GLB] ${lmId} load failed:`, err));
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------

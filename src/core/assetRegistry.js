@@ -135,6 +135,8 @@ export const MODEL_PATHS = {
     player_home: './assets/models/environment/house_player.glb',
     artisan_workshop: './assets/models/environment/house_artisan.glb',
     neighbor_east: './assets/models/environment/house_neighbor_east.glb',
+    market_stall: './assets/models/environment/market_stall_v2.glb',
+    lighthouse: './assets/models/environment/lighthouse_v2.glb',
   },
 };
 

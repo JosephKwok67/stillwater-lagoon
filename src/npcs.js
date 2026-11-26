@@ -212,16 +212,17 @@ export function buildTownNpcs(scene, town) {
 
   const workshop = town.enterableBuildings.find((b) => b.id === 'artisan_workshop');
   const artisanPos = workshop
-    ? workshop.toWorld(0.15, workshop.dims.floorY + 0.05, -0.35)
-    : new THREE.Vector3(-4.8, getWorldElevation(-4.8, -22.2), -22.2);
+    ? workshop.toWorld(0.25, workshop.dims.floorY + 0.05, -0.35)
+    : new THREE.Vector3(-8.4, getWorldElevation(-8.4, -23.6), -23.6);
 
-  // Stand cleanly beside the Fish Market stall on flat village lane (clear of market pier planks!)
-  const marketX = -5.25;
-  const marketZ = -18.85;
+  // Stand warmly right beside the v2.1 Fish Market Stall's open east transaction nook (100% clear of pier & promenade!)
+  const marketX = -6.35;
+  const marketZ = -19.25;
   const marketPos = new THREE.Vector3(marketX, town.getWalkableElevation(marketX, marketZ), marketZ);
 
-  const lhNpcX = 15.55;
-  const lhNpcZ = -15.35;
+  // Stand proudly on the dramatic v2.1 Eastern Rocky Lighthouse Cliff plateau beside the 7.8m Lighthouse!
+  const lhNpcX = 19.65;
+  const lhNpcZ = -14.35;
   const lhNpcPos = new THREE.Vector3(lhNpcX, town.getWalkableElevation(lhNpcX, lhNpcZ), lhNpcZ);
 
   const specs = [

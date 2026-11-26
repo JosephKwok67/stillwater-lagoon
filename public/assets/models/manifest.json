@@ -10,7 +10,9 @@
   "buildings": {
     "player_home": true,
     "artisan_workshop": true,
-    "neighbor_east": true
+    "neighbor_east": true,
+    "market_stall": true,
+    "lighthouse": true
   },
   "fishIconsDelivered": [
     "stillwater_koi",

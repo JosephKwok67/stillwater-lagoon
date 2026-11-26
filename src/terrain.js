@@ -1,10 +1,32 @@
 import { fbm2D, smoothstep, clamp } from './noise.js';
 
 /**
- * Computes shoreline distance & continuous world elevation across the expanded 160x160 lagoon + coastal village peninsula.
- * - Negative values (< 0) = submerged lagoon seabed
- * - Zero (= 0) = waterline
- * - Positive values (> 0) = sandy beach, flat coastal village terraces, and rolling painterly hills
+ * Exact v2.1 Crescent Bay shoreline Z-coordinate as a function of world X.
+ * - Village crescent spans x ∈ [-15, +15], bowing northward inland to z ≈ -18.2m at cove center (x=0)
+ * - Eastern rocky lighthouse promontory juts gracefully south to z ≈ -11.4m around x ≈ +22.5
+ * - Western wooded bluff frames the cove on the left around x ≈ -19.5
+ * Exported so `src/town.js` aligns the curved stone retaining quay wall, cobblestone promenade,
+ * shoreline boulders, and 3 crisp 5-step timber piers to the exact millimeter!
+ */
+export function getShoreZ(x) {
+  const normX = clamp(x / 14.5, -1.65, 1.85);
+  // Concave crescent bay (3.6m deep curve across 29m chord): z = -18.2 at x=0, z = -14.6 at x=±14.5
+  const crescent = -14.6 - 3.6 * Math.max(-1.1, 1.0 - normX * normX);
+  // Dramatic eastern rocky lighthouse headland jutting south into the lagoon
+  const eastHeadland = 4.4 * Math.exp(-Math.pow((x - 22.0) / 6.8, 2));
+  // Western wooded bluff framing the left cove
+  const westBluff = 3.4 * Math.exp(-Math.pow((x + 19.5) / 7.2, 2));
+  return crescent + eastHeadland + westBluff;
+}
+
+/**
+ * Computes shoreline distance & continuous world elevation across the expanded 160x160 lagoon + v2.1 coastal village.
+ * Unified v2.1 Elevation Profile (GPT-6.2-Astra Ultra spec):
+ * - Water surface: Y = 0.00m
+ * - Pier decks: Y = +0.44m (connected via 5 crisp 0.14m wooden steps!)
+ * - Flat Village Promenade & Front Cottage Lots: exact Y = +1.14m (zero jagged slopes or floating porches!)
+ * - Back-row Hillside Terraces: +2.05m .. +2.90m rising smoothly into rolling Ghibli hills
+ * - Eastern Rocky Lighthouse Cliff Plateau: +2.25m overlooking the bay at (21.8, -15.2)
  */
 export function getWorldElevation(x, z) {
   // -------------------------------------------------------------------------
@@ -38,89 +60,91 @@ export function getWorldElevation(x, z) {
   let elevation = -clamp(depth, 0.78, 4.2);
 
   // -------------------------------------------------------------------------
-  // 2. Sculpted Lakeside Town Peninsula & Curved Bay (North / Northeast shore: z < -14)
-  //    Rowing forward-right from the starting boat leads directly to your house & pier!
+  // 2. v2.1 Sculpted Crescent Bay Village Peninsula & Segmented Shoreline
   // -------------------------------------------------------------------------
-  // Organic curving coastline curve zShore(x) around z ≈ -15 to -23
-  const coastNoise = (fbm2D(x * 0.065 + 9.2, z * 0.065 - 4.1, 3) - 0.5) * 3.8;
-  // Gentle semicircular bay cradling the player's cove at x ≈ +3.5, curving forward at headlands x ≈ -17 and x ≈ +21
-  const coveCurve =
-    -17.2 +
-    Math.exp(-Math.pow((x - 3.5) / 10.5, 2)) * -1.4 + // cozy cove indentation at player's house & dock
-    Math.exp(-Math.pow((x - 20.0) / 7.8, 2)) * 4.2 + // eastern lighthouse headland jutting south
-    Math.exp(-Math.pow((x + 17.5) / 9.0, 2)) * 3.8 + // western wooded bluff
-    coastNoise * 0.55;
-
-  // Distance inland from the curved northern shoreline (positive = inland)
-  const inland = coveCurve - z;
+  const zShore = getShoreZ(x);
+  // Subtle organic coast variation ONLY outside the central stone quay so seawall hugs shore seamlessly
+  const quayMask = smoothstep(-9.8, -8.2, x) * (1.0 - smoothstep(10.0, 11.8, x));
+  const coastMicro = (fbm2D(x * 0.075 + 9.2, z * 0.075 - 4.1, 3) - 0.5) * 1.8 * (1.0 - quayMask);
+  const inland = zShore + coastMicro - z; // positive = inland (north, smaller z)
 
   // Lateral fade so the town peninsula tapers naturally back into open lagoon far east/west
   const penMask =
-    smoothstep(-48, -24, x) * (1.0 - smoothstep(26, 52, x)) * smoothstep(-68, -48, z);
+    smoothstep(-48, -26, x) * (1.0 - smoothstep(32, 56, x)) * smoothstep(-74, -52, z);
 
   if (inland > -7.5 && penMask > 0.001) {
-    // Smooth sandy underwater shoal sloping gently up to beach (inland = 0) and green village terrace
     const shoalBlend = smoothstep(-7.2, 0.0, inland);
-    const beachRise = smoothstep(-1.2, 1.8, inland) * 0.65;
-    // Lower village plateau (flat enough for charming cottages & cobblestone path)
-    const terrace1 = smoothstep(1.2, 4.8, inland) * 1.15;
-    // Upper scenic hillside terrace behind the village
-    const terrace2 = smoothstep(9.5, 16.5, inland) * 2.35;
-    // Rolling painterly hills in the back
+
+    // Segmented shoreline rise:
+    // - Central Quay (x ∈ [-8.8, +10.8]): crisp stone retaining seawall rise right at inland = 0!
+    // - West Cove (x < -8.8) & East Rocky Shore (x > +10.8): natural sloped coastal beach/rocks!
+    const riseNatural = smoothstep(-2.4, 1.4, inland) * 1.46;
+    const riseQuay = smoothstep(-0.35, 0.45, inland) * 1.46;
+    const shoreRise = riseNatural * (1.0 - quayMask) + riseQuay * quayMask;
+
+    // Upper hillside terrace behind enlarged front-row cottages (inland > 11.5m!)
+    const terrace2 = smoothstep(11.4, 17.5, inland) * 1.75;
+
+    // Lush rolling Ghibli backdrop hills behind the back-row cottages
     const backHills =
-      smoothstep(15.0, 30.0, inland) *
-      (2.4 + fbm2D(x * 0.075 + 2.5, z * 0.075 + 1.8, 3) * 3.6);
+      smoothstep(18.5, 36.0, inland) *
+      (3.4 + fbm2D(x * 0.07 + 2.5, z * 0.07 + 1.8, 3) * 3.8);
 
-    // Extra scenic rocky promontory for the eastern lighthouse
-    const lhDist = Math.hypot((x - 17.2) / 5.2, (z + 16.2) / 4.2);
-    const lighthouseKnoll = Math.exp(-lhDist * lhDist) * 1.95;
+    // Western wooded bluff elevation
+    const wBluffD = Math.hypot((x + 20.5) / 6.5, (z + 17.0) / 5.5);
+    const westBluffLift = Math.exp(-wBluffD * wBluffD) * 1.85;
 
-    const landHeight = -0.32 + beachRise + terrace1 + terrace2 + backHills + lighthouseKnoll;
+    const landHeight = -0.32 + shoreRise + terrace2 + backHills + westBluffLift;
     const blended = elevation * (1.0 - shoalBlend) + landHeight * shoalBlend;
     elevation = elevation * (1.0 - penMask) + blended * penMask;
   }
 
-  // Softly flatten a clean terrace pad right under the Player's Own Waterside House, Courtyard & Sunny Garden Plot
-  const houseDist = Math.hypot((x - 2.4) / 5.8, (z + 20.1) / 3.9);
-  if (houseDist < 1.6) {
-    const padWeight = 1.0 - smoothstep(0.68, 1.55, houseDist);
-    elevation = elevation * (1.0 - padWeight) + 1.15 * padWeight;
+  // Exact flat Y = +1.14m village terrace across continuous curved promenade, fish market square,
+  // fenced garden plot, and ALL 3 enlarged front-row cottages (x ∈ [-15.5, +15.8], inland ∈ [0.3, 11.6])!
+  if (x > -17.0 && x < 17.2 && inland > 0.0 && inland < 13.5) {
+    const xFlat = smoothstep(-16.8, -13.6, x) * (1.0 - smoothstep(13.8, 17.0, x));
+    const zFlat = smoothstep(0.15, 0.95, inland) * (1.0 - smoothstep(10.8, 12.8, inland));
+    const flatW = xFlat * zFlat;
+    elevation = elevation * (1.0 - flatW) + 1.14 * flatW;
   }
 
-  // Softly flatten a cozy central village square pad around Fish Market & Artisan Workshop (-5.2, -20.8)
-  const squareDist = Math.hypot((x + 5.2) / 5.8, (z + 20.8) / 4.3);
-  if (squareDist < 1.6) {
-    const padWeight = 1.0 - smoothstep(0.68, 1.55, squareDist);
-    elevation = elevation * (1.0 - padWeight) + 1.32 * padWeight;
+  // Dramatic Two-Tiered Eastern Rocky Cliff Promontory for the 7.8m Lighthouse & Hai Bo (21.8, -15.2)!
+  const lhDist = Math.hypot((x - 21.8) / 5.4, (z + 15.2) / 4.6);
+  if (lhDist < 1.85) {
+    const tier1 = (1.0 - smoothstep(0.75, 1.55, lhDist)) * 1.35;
+    const tier2 = (1.0 - smoothstep(0.32, 0.92, lhDist)) * 1.25;
+    const cliffTarget = -0.35 + tier1 + tier2;
+    elevation = Math.max(elevation, cliffTarget);
+    // Smooth flat cliff crown plateau right at Y = +2.25m for Lighthouse + Keeper Shed + Hai Bo!
+    if (lhDist < 0.85) {
+      const crownW = 1.0 - smoothstep(0.45, 0.85, lhDist);
+      elevation = elevation * (1.0 - crownW) + 2.25 * crownW;
+    }
   }
 
-  // Softly flatten east cottage terrace around (10.6, -20.6)
-  const eastHouseDist = Math.hypot((x - 10.6) / 3.6, (z + 20.6) / 3.2);
-  if (eastHouseDist < 1.5) {
-    const padWeight = 1.0 - smoothstep(0.62, 1.45, eastHouseDist);
-    elevation = elevation * (1.0 - padWeight) + 1.24 * padWeight;
-  }
-
-  // Softly flatten a lighthouse plateau at (x = 17.2, z = -16.2)
-  const lhPad = Math.hypot((x - 17.2) / 3.0, (z + 16.2) / 3.0);
-  if (lhPad < 1.5) {
-    const padWeight = 1.0 - smoothstep(0.55, 1.45, lhPad);
-    elevation = elevation * (1.0 - padWeight) + 2.15 * padWeight;
+  // Gentle walkable stone coastal path ramp linking East Cottage (+14.5, -16.5 @ 1.14m) up to Lighthouse Cliff (+19.2, -14.8 @ 2.15m)!
+  const pathT = clamp((x - 14.0) / 5.4, 0, 1);
+  const pathCenterZ = -16.2 + pathT * 1.4;
+  const pathDist = Math.abs(z - pathCenterZ);
+  if (x >= 13.2 && x <= 20.4 && pathDist < 2.6) {
+    const pw = (1.0 - smoothstep(1.1, 2.5, pathDist)) * smoothstep(13.2, 14.5, x) * (1.0 - smoothstep(19.0, 20.4, x));
+    const targetPathY = 1.14 + smoothstep(0, 1, pathT) * 1.08;
+    elevation = elevation * (1.0 - pw * 0.85) + targetPathY * (pw * 0.85);
   }
 
   // Distant scenic outer emerald islands far south/west/east so the expanded world feels alive
-  const farEast = Math.hypot((x - 34) / 7.5, (z - 14) / 6.0);
+  const farEast = Math.hypot((x - 36) / 7.5, (z - 14) / 6.0);
   if (farEast < 1.7) {
     const h = (1.0 - smoothstep(0.3, 1.6, farEast)) * 3.2;
     elevation = Math.max(elevation, -0.5 + h);
   }
-  const farWest = Math.hypot((x + 34) / 8.0, (z - 12) / 6.5);
+  const farWest = Math.hypot((x + 36) / 8.0, (z - 12) / 6.5);
   if (farWest < 1.7) {
     const h = (1.0 - smoothstep(0.3, 1.6, farWest)) * 2.8;
     elevation = Math.max(elevation, -0.5 + h);
   }
 
-  return clamp(elevation, -4.5, 9.0);
+  return clamp(elevation, -4.5, 9.5);
 }
 
 /**
