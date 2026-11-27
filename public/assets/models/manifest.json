@@ -14,6 +14,12 @@
     "market_stall": true,
     "lighthouse": true
   },
+  "environment": {
+    "tree_pine": true,
+    "tree_fir": true,
+    "tree_alder": true,
+    "backdrop_mountain": true
+  },
   "fishIconsDelivered": [
     "stillwater_koi",
     "yellowfin_tuna",

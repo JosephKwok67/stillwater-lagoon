@@ -107,5 +107,5 @@
 
 - [x] [泻湖渔村的一天](../art_pipeline/concepts/storyboards/stillwater_fishing_village_storyboard.png) · 1672 × 941 PNG，四格水粉概念图，覆盖山坡、船头、鱼市和栈桥四个机位。
 - [x] [泻湖岸树设定板](../art_pipeline/concepts/storyboards/lagoon_tree_studies.png) · 风剪岸松、尖顶冷杉和桤木的主稿、树形小稿与枝叶细节。
-- [x] [三种岸树的可编辑白模](../art_pipeline/blender/lagoon_tree_whitebox.blend) · 造型评审阶段。可查看[白模对照板](../art_pipeline/staging/tree_whitebox/review.jpg)对比低机位和游戏默认 52° 俯视。
-- [x] [渔村背山设定板](../art_pipeline/concepts/storyboards/lagoon_mountain_studies.png)与[可编辑山体白模](../art_pipeline/blender/lagoon_mountain_whitebox.blend) · 造型评审阶段。[三视角评审板](../art_pipeline/staging/mountain_whitebox/review.jpg)
+- [x] [三种岸树的可编辑白模](../art_pipeline/blender/lagoon_tree_whitebox.blend) → 已由 Blender 5.3 轻量化、深根裙防悬空与水粉 AO 烘焙为正式游戏资产：`public/assets/models/environment/tree_pine.glb`（3,849 tris）、`tree_fir.glb`（3,119 tris）、`tree_alder.glb`（3,398 tris），全图 GPU 实例化接入。
+- [x] [渔村背山设定板](../art_pipeline/concepts/storyboards/lagoon_mountain_studies.png)与[可编辑山体白模](../art_pipeline/blender/lagoon_mountain_whitebox.blend) → 已精修为正式游戏资产：`public/assets/models/environment/backdrop_mountain.glb`（10,800 tris / 2048px 手绘草岩 AO 贴图），无缝接入后山远景天际线。

@@ -4,6 +4,14 @@
 
 ---
 
+## [v0.9.3] - 2026-11-28（3 种吉卜力岸树 GPU 实例化落地 + 远景背山无缝融入 + P2 待办建档）
+- **零地形改动前提下的场景美术大升级**：未改动 `src/terrain.js` 既有可游玩地形，将 Codex 岸树与渔村背山两套白模经 Blender 5.3 轻量化与水粉烘焙后正式接入游戏：
+  - **三棵岸树精模管线（`art_pipeline/blender_ag/build_coastal_trees_v1.py`）**：将原 160k/30k/60k 面高模压减至 `tree_pine.glb`（3,849 tris / 498 KB）、`tree_fir.glb`（3,119 tris / 523 KB）、`tree_alder.glb`（3,398 tris / 451 KB）；增加 `-0.55m` 深根裙与抱地根尖（斜坡零悬空）、球面软法线与真实线性吉卜力水粉+AO 烘焙贴图（6-Pass UV 渗色膨胀去黑缝）。
+  - **生态分区与 6-Draw-Call GPU 实例化（`src/core/glbLoader.js`、`src/town/foliageAndProps.js`）**：按海角/村落/山脊自动生态分区（海岸与海角用风剪岸松、院落低坡用桤木、后山脊线增补冷杉过渡林带），全部 ~90 棵树仅用 6 个 `InstancedMesh` 渲染，叶冠注入与草地风场同步的柔和微风摇曳着色器。
+  - **渔村背山精模管线与无痕衔接（`art_pipeline/blender_ag/build_backdrop_mountain_v1.py`、`src/town.js`、`src/core/cameraDirector.js`）**：导出 `backdrop_mountain.glb`（10,800 tris / 980 KB，2048px 手绘草坡+暖岩冷影 AO 贴图 + `-5.5m` 深底裙），精准置于草脊后方 `z = -74.5`（零侵入前景草坡、跳过水面折射与阴影通道），叠加柔和天空漫反射提亮，配合优化后的「看岸边小镇」默认取景视角，一键框进完整双峰天际线、渔村与泻湖；晴日与日落雾效过渡自然。
+- **P2 待办建档**：新建 [docs/TODO.md](./TODO.md)，集中登记 P2 体验项（移动端触屏操控、GLB 加载遮罩、WebAudio 环境/互动音效、首次引导）及后续长期路线。
+- **验证与同步**：Blender 四视角棚拍验收 + `vite build` 0 警告通过 + 浏览器晴/日落全景与斜坡树根特写 0 报错验收。
+
 ## [v0.9.2] - 2026-11-28（P0 性能深度优化 + P1 架构模块化重构）
 - **P0 性能优化**：
   - **水面折射离屏通道优化（`src/water.js`、`src/town.js`、`src/npcs.js`、`src/main.js`）**：将渔村网格拆分为临水接触层（`shoreWaterGroup`：护岸/岸石/栈桥）与内陆层（`inlandVisualGroup`：房屋/树木/灌木/地标/飘烟），折射通道自动隐藏内陆层、NPC 与草地，并引入分辨率缩放（高画质 `0.75×` / 均衡 `0.55×` / 省电 `0.45×`），大幅降低 GPU 渲染负担且水体清澈度与岸线泡沫零损失。

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { meadowUniforms } from '../grass.js';
 
 const loader = new GLTFLoader();
 
@@ -213,6 +214,134 @@ export function loadBuildingGlb(url) {
           doorHinge,
           anchors,
         });
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+/**
+ * Loads a GPU-instanceable Coastal Tree GLB (`tree_pine.glb`, `tree_fir.glb`, `tree_alder.glb`)
+ * containing `Tree_Wood` and `Tree_Foliage` meshes, and injects gentle coastal wind sway
+ * synchronized with `meadowUniforms` onto the foliage canopy material!
+ */
+export function loadTreeGlb(url) {
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => {
+        let woodMesh = null;
+        let foliageMesh = null;
+        gltf.scene.updateMatrixWorld(true);
+        gltf.scene.traverse((obj) => {
+          if (!obj.isMesh) return;
+          const n = (obj.name || '').toLowerCase();
+          if (n.includes('foliage') || n.includes('leaf') || n.includes('canopy')) {
+            foliageMesh = obj;
+          } else if (n.includes('wood') || n.includes('trunk') || n.includes('bark')) {
+            woodMesh = obj;
+          } else if (!woodMesh) {
+            woodMesh = obj;
+          } else if (!foliageMesh) {
+            foliageMesh = obj;
+          }
+        });
+
+        const prepMat = (rawMat, isFoliage) => {
+          const m = (rawMat ? rawMat.clone() : new THREE.MeshStandardMaterial({ color: 0xffffff }));
+          if (m.isMeshStandardMaterial) {
+            m.roughness = isFoliage ? 0.88 : 0.90;
+            m.metalness = 0.0;
+          }
+          if (isFoliage) {
+            m.onBeforeCompile = (shader) => {
+              shader.uniforms.uTime = meadowUniforms.uTime;
+              shader.uniforms.uWindDir = meadowUniforms.uWindDir;
+              shader.uniforms.uWindStrength = meadowUniforms.uWindStrength;
+              shader.vertexShader = shader.vertexShader
+                .replace(
+                  '#include <common>',
+                  `#include <common>
+                  uniform float uTime;
+                  uniform vec2 uWindDir;
+                  uniform float uWindStrength;
+                  `
+                )
+                .replace(
+                  '#include <begin_vertex>',
+                  `#include <begin_vertex>
+                  {
+                    float tW = clamp((position.y - 0.8) * 0.35, 0.0, 1.0);
+                    float tPhase = 0.0;
+                    #ifdef USE_INSTANCING
+                      tPhase = instanceMatrix[3][0] * 0.27 + instanceMatrix[3][2] * 0.31;
+                    #endif
+                    float gust = sin(uTime * 1.15 + tPhase) * 0.65 + sin(uTime * 2.4 + tPhase * 1.9 + position.x * 1.6) * 0.35;
+                    float amp = 0.065 * uWindStrength * tW * tW;
+                    transformed.x += uWindDir.x * gust * amp;
+                    transformed.z += uWindDir.y * gust * amp;
+                  }
+                  `
+                );
+            };
+            m.customProgramCacheKey = () => 'coastal_tree_foliage_sway_v1';
+          }
+          return m;
+        };
+
+        const bakeGeo = (mesh) => {
+          if (!mesh) return null;
+          const g = mesh.geometry.clone();
+          g.applyMatrix4(mesh.matrixWorld);
+          return g;
+        };
+
+        resolve({
+          woodGeo: bakeGeo(woodMesh),
+          woodMat: woodMesh ? prepMat(woodMesh.material, false) : null,
+          foliageGeo: bakeGeo(foliageMesh),
+          foliageMat: foliageMesh ? prepMat(foliageMesh.material, true) : null,
+        });
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+/**
+ * Loads a scenic backdrop environment GLB (`backdrop_mountain.glb`) configured with
+ * matte Ghibli shading, atmospheric fog support, and zero shadow-pass overhead.
+ */
+export function loadEnvironmentGlb(url) {
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => {
+        const model = gltf.scene;
+        model.traverse((obj) => {
+          if (!obj.isMesh) return;
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            for (const m of mats) {
+              if (m.isMeshStandardMaterial) {
+                m.roughness = 0.92;
+                m.metalness = 0.0;
+                m.fog = true;
+                // Gentle painted gouache sky-bounce so backlit north mountain cliffs stay warm & readable
+                if (m.map) {
+                  m.emissiveMap = m.map;
+                  m.emissive = new THREE.Color('#dfe8d8');
+                  m.emissiveIntensity = 0.26;
+                }
+              }
+            }
+          }
+        });
+        resolve({ model });
       },
       undefined,
       (err) => reject(err)

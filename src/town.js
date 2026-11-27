@@ -640,7 +640,7 @@ export function buildLakesideTown(scene) {
     ...VILLAGE_HOUSE_SPECS.map((h) => ({ x: h.x, z: h.z, r: Math.max(h.w, h.d) * 0.85 + 1.2 })),
   ];
 
-  buildInstancedTreesAndBushes({
+  const foliageSystem = buildInstancedTreesAndBushes({
     inlandVisualGroup,
     darkTimberMat,
     rng,
@@ -649,6 +649,7 @@ export function buildLakesideTown(scene) {
   });
 
   const smokeSystem = buildInstancedSmoke({ inlandVisualGroup, smokeSources, rng });
+  let backdropMountainNode = null;
 
   // =========================================================================
   // 6. WALKABLE ELEVATION & O(1) SPATIAL-HASHED COLLISION RESOLUTION
@@ -727,7 +728,7 @@ export function buildLakesideTown(scene) {
     enterableBuildings,
     playerHome,
     farmPlotAnchor,
-    homeViewTarget: new THREE.Vector3(2.8, 1.5, -20.5),
+    homeViewTarget: new THREE.Vector3(2.0, 5.2, -20.5),
     pierDockSpot: docks[0].boatMoorPos,
     isWalkableDeck,
     isWalkableLand,
@@ -742,6 +743,29 @@ export function buildLakesideTown(scene) {
           wl.light.visible = enableNonEssential;
         }
       }
+    },
+
+    attachTreeGlbs(speciesMap) {
+      return foliageSystem.attachTreeGlbs(speciesMap);
+    },
+
+    /**
+     * Places Codex + Blender's hand-painted Ghibli Backdrop Mountain cleanly behind
+     * the existing northern village hills with ZERO terrain alteration and zero water refraction cost!
+     */
+    attachBackdropMountainGlb(envData) {
+      if (!envData || !envData.model) return false;
+      if (backdropMountainNode) {
+        inlandVisualGroup.remove(backdropMountainNode);
+      }
+      backdropMountainNode = envData.model;
+      backdropMountainNode.name = 'BackdropMountain_GLB';
+      // Sits cleanly behind the northern grass ridge (front toe z ≈ -52m, zero overlap with foreground
+      // meadow!), framing the entire crescent bay, fir treeline & cottages with full skyline summits!
+      backdropMountainNode.position.set(2.0, -1.5, -74.5);
+      backdropMountainNode.scale.set(1.06, 0.82, 0.92);
+      inlandVisualGroup.add(backdropMountainNode);
+      return true;
     },
 
     attachLandmarkGlb(landmarkId, glbData) {

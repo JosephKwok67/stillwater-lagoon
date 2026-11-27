@@ -54,9 +54,9 @@ export function createCameraDirector({
     playerAvatar.root.visible = mode !== 'aquarium';
 
     if (mode === 'town') {
-      camState.targetDistance = 31.8;
-      camState.targetPitchDeg = 24;
-      camState.targetYawDeg = -6;
+      camState.targetDistance = 39.5;
+      camState.targetPitchDeg = 11.5;
+      camState.targetYawDeg = -3;
       if (btnTown) btnTown.textContent = '回到主角';
     } else if (mode === 'fish') {
       camState.targetDistance = 12.2;

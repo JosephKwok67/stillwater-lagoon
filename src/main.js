@@ -29,7 +29,13 @@ import {
   getRodSpec,
   getBaitSpec,
 } from './core/assetRegistry.js';
-import { fetchAssetManifest, loadCharacterGlb, loadBuildingGlb } from './core/glbLoader.js';
+import {
+  fetchAssetManifest,
+  loadCharacterGlb,
+  loadBuildingGlb,
+  loadTreeGlb,
+  loadEnvironmentGlb,
+} from './core/glbLoader.js';
 
 // ---------------------------------------------------------------------------
 // 1. Core Foundation Systems
@@ -186,6 +192,27 @@ fetchAssetManifest().then(async (manifest) => {
         .then((data) => town.attachLandmarkGlb(lmId, data))
         .catch((err) => console.warn(`[GLB] ${lmId} load failed:`, err));
     }
+  }
+
+  const envFlags = manifest.environment || {};
+  const treeIds = ['tree_pine', 'tree_fir', 'tree_alder'].filter(
+    (id) => envFlags[id] && MODEL_PATHS.environment?.[id]
+  );
+  if (treeIds.length && town.attachTreeGlbs) {
+    Promise.allSettled(treeIds.map((id) => loadTreeGlb(MODEL_PATHS.environment[id]).then((data) => [id, data]))).then(
+      (results) => {
+        const loaded = {};
+        for (const r of results) {
+          if (r.status === 'fulfilled') loaded[r.value[0]] = r.value[1];
+        }
+        if (Object.keys(loaded).length) town.attachTreeGlbs(loaded);
+      }
+    );
+  }
+  if (envFlags.backdrop_mountain && MODEL_PATHS.environment?.backdrop_mountain && town.attachBackdropMountainGlb) {
+    loadEnvironmentGlb(MODEL_PATHS.environment.backdrop_mountain)
+      .then((data) => town.attachBackdropMountainGlb(data))
+      .catch((err) => console.warn('[GLB] backdrop_mountain load failed:', err));
   }
 });
 

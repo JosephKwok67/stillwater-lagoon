@@ -138,6 +138,12 @@ export const MODEL_PATHS = {
     market_stall: './assets/models/environment/market_stall_v2.glb',
     lighthouse: './assets/models/environment/lighthouse_v2.glb',
   },
+  environment: {
+    tree_pine: './assets/models/environment/tree_pine.glb',
+    tree_fir: './assets/models/environment/tree_fir.glb',
+    tree_alder: './assets/models/environment/tree_alder.glb',
+    backdrop_mountain: './assets/models/environment/backdrop_mountain.glb',
+  },
 };
 
 const fallbackFishCardCache = new Map();

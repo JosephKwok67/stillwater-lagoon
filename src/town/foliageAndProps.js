@@ -135,8 +135,9 @@ export function buildInstancedFlagstones({ inlandVisualGroup, cobbleMat, rng }) 
 }
 
 /**
- * Builds all Ghibli multi-blob trees (~80 trees -> 2 InstancedMeshes!) and flowering bushes
- * (~34 bushes + flowers -> 2 InstancedMeshes, zero per-flower material allocations!).
+ * Builds all Ghibli coastal trees (procedural instanced blob fallback that hot-swaps seamlessly
+ * to GPU-instanced Codex+Blender `tree_pine` / `tree_fir` / `tree_alder` GLBs in just 6 draw calls!)
+ * and flowering bushes (2 InstancedMeshes, zero per-flower material allocations).
  */
 export function buildInstancedTreesAndBushes({
   inlandVisualGroup,
@@ -149,6 +150,13 @@ export function buildInstancedTreesAndBushes({
   for (let i = 0; i < 64; i++) {
     treeSpots.push([-30 + rng() * 60, -15 - rng() * 24]);
   }
+  // Natural alpine conifer treeline belt along the upper northern hill (z ∈ [-35, -45])
+  // framing the foothill transition into the backdrop mountain with zero terrain changes!
+  for (let i = 0; i < 26; i++) {
+    const tx = -36 + (i / 25) * 72 + (rng() - 0.5) * 2.4;
+    const tz = -35.5 - rng() * 9.5;
+    treeSpots.push([tx, tz]);
+  }
   for (let i = 0; i < 16; i++) {
     const a = rng() * Math.PI * 2;
     const r = rng() * 4.2;
@@ -156,6 +164,7 @@ export function buildInstancedTreesAndBushes({
     treeSpots.push([-34 + Math.cos(a) * r, 12 + Math.sin(a) * r]);
   }
 
+  const placedTrees = [];
   const trunks = [];
   const puffs = [];
   const clusterSpecs = [
@@ -171,8 +180,10 @@ export function buildInstancedTreesAndBushes({
     if (ty < 0.72) continue;
     if (houseExclusion.some((ex) => Math.hypot(tx - ex.x, tz - ex.z) < ex.r)) continue;
     if (LANE_POINTS.some(([lx, lz]) => Math.hypot(tx - lx, tz - lz) < 2.0)) continue;
+    // Prevent overlapping tree trunks when combining curated + ridge spots
+    if (placedTrees.some((pt) => Math.hypot(tx - pt.x, tz - pt.z) < 2.15)) continue;
 
-    const scale = 0.75 + rng() * 0.58;
+    const scale = 0.78 + rng() * 0.52;
     const trunkH = 1.25 * scale;
     const leanZ = (rng() - 0.5) * 0.12;
     const color = LEAF_PALETTE[Math.floor(rng() * LEAF_PALETTE.length)];
@@ -180,6 +191,29 @@ export function buildInstancedTreesAndBushes({
     const cosR = Math.cos(treeRot);
     const sinR = Math.sin(treeRot);
     const baseY = ty - 0.12;
+
+    // Natural ecological species zoning matching lagoon_tree_studies.png & lagoon_mountain_studies.png
+    const rSpec = rng();
+    let species = 'tree_alder';
+    if (tz < -28.0 || ty > 2.55) {
+      species = rSpec < 0.64 ? 'tree_fir' : rSpec < 0.84 ? 'tree_pine' : 'tree_alder';
+    } else if (Math.abs(tx) > 13.5 || tz > -18.5) {
+      species = rSpec < 0.65 ? 'tree_pine' : rSpec < 0.90 ? 'tree_alder' : 'tree_fir';
+    } else {
+      species = rSpec < 0.56 ? 'tree_alder' : rSpec < 0.92 ? 'tree_pine' : 'tree_fir';
+    }
+
+    placedTrees.push({
+      x: tx,
+      y: ty - 0.08,
+      z: tz,
+      rotY: treeRot,
+      scale,
+      species,
+      tintR: 0.92 + rng() * 0.14,
+      tintG: 0.94 + rng() * 0.12,
+      tintB: 0.90 + rng() * 0.14,
+    });
 
     trunks.push({ x: tx, y: baseY + trunkH * 0.42, z: tz, rotY: treeRot, leanZ, scale });
 
@@ -206,6 +240,10 @@ export function buildInstancedTreesAndBushes({
   const dummy = new THREE.Object3D();
   const leafInstMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.87 });
 
+  const procTreeGroup = new THREE.Group();
+  procTreeGroup.name = 'Town_ProceduralTrees';
+  inlandVisualGroup.add(procTreeGroup);
+
   if (trunks.length) {
     const trunkGeo = new THREE.CylinderGeometry(0.11, 0.19, 1.25, 7);
     const trunkInst = new THREE.InstancedMesh(trunkGeo, darkTimberMat, trunks.length);
@@ -219,7 +257,7 @@ export function buildInstancedTreesAndBushes({
       trunkInst.setMatrixAt(i, dummy.matrix);
     });
     trunkInst.instanceMatrix.needsUpdate = true;
-    inlandVisualGroup.add(trunkInst);
+    procTreeGroup.add(trunkInst);
   }
 
   if (puffs.length) {
@@ -237,7 +275,71 @@ export function buildInstancedTreesAndBushes({
     });
     canopyInst.instanceMatrix.needsUpdate = true;
     if (canopyInst.instanceColor) canopyInst.instanceColor.needsUpdate = true;
-    inlandVisualGroup.add(canopyInst);
+    procTreeGroup.add(canopyInst);
+  }
+
+  // Hot-swap handler: replaces procedural blob trees with GPU-instanced Blender Coastal Trees!
+  const glbTreeGroup = new THREE.Group();
+  glbTreeGroup.name = 'Town_CoastalTreeGLBs';
+  inlandVisualGroup.add(glbTreeGroup);
+
+  function attachTreeGlbs(speciesMap) {
+    if (!speciesMap || !Object.keys(speciesMap).length) return false;
+    while (glbTreeGroup.children.length > 0) {
+      glbTreeGroup.remove(glbTreeGroup.children[0]);
+    }
+    const availKeys = Object.keys(speciesMap);
+    const buckets = new Map();
+    for (const k of availKeys) buckets.set(k, []);
+    for (const pt of placedTrees) {
+      const k = buckets.has(pt.species) ? pt.species : availKeys[0];
+      buckets.get(k).push(pt);
+    }
+
+    const tintCol = new THREE.Color();
+    for (const [k, items] of buckets.entries()) {
+      const asset = speciesMap[k];
+      if (!asset || !items.length) continue;
+
+      // Subtle per-species world scale tuning so trees harmonize with enlarged v2.1 cottages!
+      const spScale = k === 'tree_fir' ? 1.12 : k === 'tree_pine' ? 1.05 : 1.02;
+
+      if (asset.woodGeo && asset.woodMat) {
+        const wInst = new THREE.InstancedMesh(asset.woodGeo, asset.woodMat, items.length);
+        wInst.castShadow = true;
+        wInst.receiveShadow = true;
+        items.forEach((pt, i) => {
+          dummy.position.set(pt.x, pt.y, pt.z);
+          dummy.rotation.set(0, pt.rotY, 0);
+          dummy.scale.setScalar(pt.scale * spScale);
+          dummy.updateMatrix();
+          wInst.setMatrixAt(i, dummy.matrix);
+        });
+        wInst.instanceMatrix.needsUpdate = true;
+        glbTreeGroup.add(wInst);
+      }
+
+      if (asset.foliageGeo && asset.foliageMat) {
+        const fInst = new THREE.InstancedMesh(asset.foliageGeo, asset.foliageMat, items.length);
+        fInst.castShadow = true;
+        fInst.receiveShadow = true;
+        items.forEach((pt, i) => {
+          dummy.position.set(pt.x, pt.y, pt.z);
+          dummy.rotation.set(0, pt.rotY, 0);
+          dummy.scale.setScalar(pt.scale * spScale);
+          dummy.updateMatrix();
+          fInst.setMatrixAt(i, dummy.matrix);
+          tintCol.setRGB(pt.tintR, pt.tintG, pt.tintB);
+          fInst.setColorAt(i, tintCol);
+        });
+        fInst.instanceMatrix.needsUpdate = true;
+        if (fInst.instanceColor) fInst.instanceColor.needsUpdate = true;
+        glbTreeGroup.add(fInst);
+      }
+    }
+
+    procTreeGroup.visible = false;
+    return true;
   }
 
   // Flowering Bushes (2 InstancedMeshes, zero per-flower material clones!)
@@ -298,6 +400,8 @@ export function buildInstancedTreesAndBushes({
     if (flowerInst.instanceColor) flowerInst.instanceColor.needsUpdate = true;
     inlandVisualGroup.add(flowerInst);
   }
+
+  return { attachTreeGlbs };
 }
 
 /**
