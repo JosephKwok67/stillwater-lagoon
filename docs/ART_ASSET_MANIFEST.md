@@ -106,3 +106,6 @@
 ## 五、环境概念分镜
 
 - [x] [泻湖渔村的一天](../art_pipeline/concepts/storyboards/stillwater_fishing_village_storyboard.png) · 1672 × 941 PNG，四格水粉概念图，覆盖山坡、船头、鱼市和栈桥四个机位。
+- [x] [泻湖岸树设定板](../art_pipeline/concepts/storyboards/lagoon_tree_studies.png) · 风剪岸松、尖顶冷杉和桤木的主稿、树形小稿与枝叶细节。
+- [x] [三种岸树的可编辑白模](../art_pipeline/blender/lagoon_tree_whitebox.blend) · 造型评审阶段。可查看[白模对照板](../art_pipeline/staging/tree_whitebox/review.jpg)对比低机位和游戏默认 52° 俯视。
+- [x] [渔村背山设定板](../art_pipeline/concepts/storyboards/lagoon_mountain_studies.png)与[可编辑山体白模](../art_pipeline/blender/lagoon_mountain_whitebox.blend) · 造型评审阶段。[三视角评审板](../art_pipeline/staging/mountain_whitebox/review.jpg)

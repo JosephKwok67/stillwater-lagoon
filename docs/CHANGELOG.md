@@ -4,6 +4,22 @@
 
 ---
 
+## [v0.9.1] - 2026-11-28（吉卜力 × 动森 GPU 实例化风吹草地与野花系统）
+- **新增草地系统模块（`src/grass.js`）**，仅在 `src/main.js` 挂载初始化与帧更新、在 `src/environment.js` 微调草地底色实现根部无缝融合，其余游戏架构与玩法逻辑保持零改动：
+  - **GPU 实例化与性能分级**：每簇 7 片柔宽弯叶（2 段 28 三角形），8m 分块配合视锥剔除与距离稀疏化 LOD（远处柔和下沉淡出）；水面折射离屏通道通过 `scene.onBeforeRender` 自动跳过草地以保持零额外开销；移动端/低核数 CPU 自动降级密度至 55%。
+  - **吉卜力式风浪与日光野花**：顶点着色器实现大尺度阵风带、斜向日光云影色带与受风亮绿草浪高光（风力随晴/晨/落日/阴天气平滑联动）；搭配奶油白雏菊、金黄毛茛为主的成片小野花，并在 ACES 色调映射下校准鲜嫩春绿饱和度。
+  - **角色/小狗动态分草与精准边缘避让**：主角与陪伴小狗走过草地时叶片向两侧柔和分开；草根按地形网格逐三角形插值精确贴地，依据实际建筑本体与真实门廊尺寸、石板长廊、踏石小径、3 条码头、围栏菜园与地标底座精准避让并自动变矮羽化，消除生硬矩形空地、零穿模。
+- **构建与实机验收**：`npm run build`（Vite 生产构建）与本地实机全景/黄顶屋边界/近景风摆 0 报错通过。
+
+## 2026-11-28 · 渔村背山造型
+
+- 完成[背山分镜](../art_pipeline/concepts/storyboards/lagoon_mountain_studies.png)和[Blender 白模](../art_pipeline/blender/lagoon_mountain_whitebox.blend)，保留宽顶主峰、右侧次峰、鞍部及临湖岩壁。[三视角评审板](../art_pipeline/staging/mountain_whitebox/review.jpg)
+
+## 2026-11-28 · 泻湖岸树造型研究
+
+- [树木设定板](../art_pipeline/concepts/storyboards/lagoon_tree_studies.png)以岸松为主稿，并列探索冷杉和桤木的树形、枝台与叶簇。
+- [Blender 白模工程](../art_pipeline/blender/lagoon_tree_whitebox.blend)按树种分集合，内置设定图和两台正交相机。[双视角评审板](../art_pipeline/staging/tree_whitebox/review.jpg)供比较树冠轮廓、枝层间隙及 52° 俯视读形。
+
 ## [v0.9.0] - 2026-11-27（Tripo v3.1 HD 自动化管线落地 & 陪伴小狗 v2.0 蒙皮精模）
 - **Git 提交**：`10b5043`
 - **Tripo MCP 零手动自动化管线**：

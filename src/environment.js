@@ -375,8 +375,9 @@ export function buildLagoonEnvironment(scene) {
   const colMid = new THREE.Color('#226d70');
   const colShallow = new THREE.Color('#5ca388');
   const colSand = new THREE.Color('#dfd1a6');
-  const colGrassA = new THREE.Color('#75a64d');
-  const colGrassB = new THREE.Color('#5a8f46');
+  // Meadow soil-green beneath the instanced grass (grass.js): matches grass roots so blades blend seamlessly
+  const colGrassA = new THREE.Color('#5a9938');
+  const colGrassB = new THREE.Color('#427c32');
   const colCliff = new THREE.Color('#9a907b');
   const tmpCol = new THREE.Color();
 

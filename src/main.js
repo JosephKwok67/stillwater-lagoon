@@ -4,6 +4,7 @@ import { underwaterSharedUniforms } from './underwaterMaterial.js';
 import { createAtmosphereSystem, WEATHER_PRESETS } from './atmosphere.js';
 import { buildLagoonEnvironment } from './environment.js';
 import { buildLakesideTown } from './town.js';
+import { buildMeadowGrass } from './grass.js';
 import { buildAquaticEcosystem, buildSwimmingCompanion } from './wildlife.js';
 import { buildTownNpcs } from './npcs.js';
 import { createPlayableBoat } from './boat.js';
@@ -69,6 +70,7 @@ const camera = new THREE.PerspectiveCamera(
 const atmosphere = createAtmosphereSystem(scene, renderer);
 const environment = buildLagoonEnvironment(scene);
 const town = buildLakesideTown(scene);
+const meadow = buildMeadowGrass(scene, { town });
 const townNpcs = buildTownNpcs(scene, town);
 const ecosystem = buildAquaticEcosystem(scene);
 const companion = buildSwimmingCompanion(scene);
@@ -1766,6 +1768,13 @@ function animate() {
 
   updateCameraImmediate();
   atmosphere.update(elapsed, camState.target);
+  meadow.update(elapsed, camera, {
+    dt,
+    walkerPos: isWalking ? playerController.walkerState.pos : null,
+    dogPos: companion.root.visible ? companion.pos : null,
+    weatherKey: atmosphere.state.presetKey,
+    nightGlow: atmosphere.state.nightGlow,
+  });
 
   // 5. Update World-Anchored [E] Interaction Prompt & Bite Alert Position
   if (camState.mode === 'aquarium' || isBusyModalOrSeq()) {
