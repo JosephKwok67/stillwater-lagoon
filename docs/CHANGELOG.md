@@ -1,6 +1,37 @@
 # 「钓鱼大冒险 / 静水」开发与更新日志（CHANGELOG）
 
-> 每次完成功能里程碑、核心美术资产接入或重大代码重构后，请同步更新本日志并执行 `npm run backup`（或在 Git 中打版本 Tag）。
+> 每次完成功能里程碑、核心美术资产接入或重大代码重构后，均自动同步更新本日志与 `README.md` 并推送至 `origin/master`，确保本地与 GitHub 仓库、GitHub Pages 在线试玩版进度完全一致。
+
+---
+
+## [v0.9.0] - 2026-11-27（Tripo v3.1 HD 自动化管线落地 & 陪伴小狗 v2.0 蒙皮精模）
+- **Git 提交**：`10b5043`
+- **Tripo MCP 零手动自动化管线**：
+  - 新增 `I:\antigravity cli\tools\codex-bridge\run_tripo_pipeline.py`（支持 Free Plan 安全级联策略、`task_id` 断点缓存、本地轮询与 30s MCP 启动超时配置），打通 `gpt-6.2-sol` 概念图 → Tripo `v3.1-20260211` HD 自动生成高精 GLB → Blender 5.3 自动清洗的闭环；
+  - 新增 `art_pipeline/blender_ag/ingest_tripo_glb.py` 与 `rig_tripo_dog_v2.py`，固化 **水密焊缝 (`remove_doubles`) → 保留 UV 边界减面 → 清除分裂法线 → 6-Pass UV 边缘渗色膨胀 → 动森磨砂水粉材质（Roughness 0.83）→ JPEG 92 轻量化导出** 标准工艺，根除 Tripo 生模的 UV 黑边裂缝。
+- **陪伴小狗 v2.0 实机上线（`public/assets/models/characters/dog.glb`，596 KB / 11,500 tris）**：
+  - 完成 7 骨垂直零偏转骨架绑定（`Rig_Body` / `Rig_Head` / `Rig_Tail` / `Rig_PawFL/FR/BL/BR`）与平滑连续权重，通过 3 轮 6 镜头 Blender 棚拍与小跑/摇尾姿态零穿模验收；
+  - `src/wildlife.js` 校准蒙皮骨架（`isSkinned`）小跑与游泳步态，实机浏览器 50/50 资源 200 OK、0 控制台报错，船侧陪游与岸上跟跑表现自然。
+
+## [v0.8.8] - 2026-11-26（v2.1 放大差异化海滨渔村、新月石护岸与 7.8m 悬崖灯塔）
+- **Git 提交**：`5592a08`
+- **全村 5 套建筑资产重构**：升级 `house_player.glb`（红瓦海景小屋）、`house_artisan.glb`（蓝瓦工匠坊）、`house_neighbor_east.glb`（黄瓦邻屋）、`market_stall_v2.glb`（阿莲渔市摊位）与 `lighthouse_v2.glb`（7.8m 红白灯塔），保留全部屋顶切开、推门与室内家具碰撞锚点。
+- **新月海湾地形与基础设施（`src/terrain.js`、`src/town.js`）**：引入新月岸线 `getShoreZ(x)`、`+1.14m` 平整村庄台地与 `+2.25m` 灯塔悬崖，新建弧形石砌护岸墙、2.65m 连续石板滨海长廊、3 条 5 阶木栈桥、围栏小花园与带碰撞体的多面体海岸岩礁。
+
+## [v0.8.6] - 2026-11-26（3 位小镇 NPC 全面升级 v2.0 有机精模）
+- **Git 提交**：`c223fd1`
+- 渔市老板娘 **阿莲**、渔具工匠 **老周**、灯塔守望者 **海伯** 全部完成多视角细节分镜、有机雕塑重构、2048px 手绘水粉+AO 烘焙与 5 角色全家福 + 场景联合渲染零穿模验收；
+- `src/npcs.js` 为海伯风雨灯接入柔和暖光 `PointLight`，夜晚与黄昏岸边氛围大幅增强。
+
+## [v0.8.5] - 2026-11-26（主角 v2.0 有机重构、工作室永久协作规则与联合渲染管线）
+- **Git 提交**：`6b98ce9`
+- 建立工作室永久协作规范（`GEMINI.md`）：明确 `gpt-6.2-astra` (`ultra`) 架构评审、`gpt-6.2-sol` (`medium`) 多视图+细节分镜、Blender 5.3 多角度零穿模验收及本地+GitHub 双同步铁律；
+- 主角 `player.glb` 完成 v2.0 有机精模重建与 2048px 水粉贴图烘焙，并通过 Blender 场景联合渲染与游戏实机验收。
+
+## [v0.8.0] - 2026-11-26（Blender 5.3 绑骨 GLB 接入、实机 Bug 修复与 GitHub Pages 自动部署）
+- **Git 提交**：`42a8cc2`
+- 全量接入 Blender 5.3 绑骨角色与无缝室内房屋 GLB，修复实机交互与渲染缺陷；
+- 新增 `.github/workflows/deploy-pages.yml` 自动化工作流与 `vite.config.js` 相对路径配置（`base: './'`），上线 GitHub Pages 公开在线试玩版。
 
 ---
 
