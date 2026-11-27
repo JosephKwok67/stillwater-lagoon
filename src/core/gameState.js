@@ -5,10 +5,11 @@
  */
 
 const SAVE_KEY = 'stillwater_fishing_adventure_save_v1';
+export const CURRENT_SAVE_VERSION = 2;
 
 function createDefaultState() {
   return {
-    version: 1,
+    version: CURRENT_SAVE_VERSION,
     day: 1,
     weather: 'sunny', // 'sunny' | 'morning' | 'sunset' | 'overcast'
     playerMode: 'sailing', // 'sailing' | 'walking' | 'fishing' | 'aquarium'
@@ -16,6 +17,10 @@ function createDefaultState() {
     mooredDockId: 'dock_home',
     coins: 120,
     echoPoints: 0,
+    settings: {
+      quality: 'auto', // 'auto' | 'high' | 'balanced' | 'low'
+      voiceMuted: false,
+    },
     equipment: {
       rodId: 'rod_bamboo',
       baitId: 'bait_dough',
@@ -86,6 +91,64 @@ function createDefaultState() {
   };
 }
 
+/**
+ * Versioned save schema migration pipeline so older saves upgrade safely
+ * as farming, cooking, livestock, and housing features are added in future milestones.
+ */
+function migrateSaveData(parsed) {
+  const base = createDefaultState();
+  const rawVersion = Number(parsed.version) || 1;
+  const data = {
+    ...base,
+    ...parsed,
+    equipment: {
+      ...base.equipment,
+      ...(parsed.equipment || {}),
+      ownedRods: Array.isArray(parsed.equipment?.ownedRods) && parsed.equipment.ownedRods.length
+        ? parsed.equipment.ownedRods
+        : [...base.equipment.ownedRods],
+      baitCounts: {
+        ...base.equipment.baitCounts,
+        ...((parsed.equipment && parsed.equipment.baitCounts) || {}),
+      },
+    },
+    settings: {
+      ...base.settings,
+      ...(parsed.settings || {}),
+    },
+    boatPose: {
+      ...base.boatPose,
+      ...(parsed.boatPose || {}),
+    },
+    inventory: Array.isArray(parsed.inventory) ? parsed.inventory : [],
+    aquariumFish: Array.isArray(parsed.aquariumFish) ? parsed.aquariumFish : base.aquariumFish,
+    fishDex: parsed.fishDex && typeof parsed.fishDex === 'object' ? parsed.fishDex : {},
+    farmPlots:
+      Array.isArray(parsed.farmPlots) && parsed.farmPlots.length === 12
+        ? parsed.farmPlots
+        : base.farmPlots,
+  };
+
+  // v1 -> v2: introduce persisted graphics quality & audio settings
+  if (rawVersion < 2) {
+    data.settings = {
+      quality: data.settings.quality || 'auto',
+      voiceMuted: Boolean(data.settings.voiceMuted),
+    };
+    data.version = 2;
+  }
+
+  // Always resume cleanly in sailing or walking (never stuck mid-cast or mid-aquarium modal)
+  if (data.playerMode !== 'sailing' && data.playerMode !== 'walking') {
+    data.playerMode = 'sailing';
+  }
+  if (data.playerMode === 'sailing') {
+    data.insideBuildingId = null;
+  }
+  data.version = CURRENT_SAVE_VERSION;
+  return data;
+}
+
 export function createGameState(eventBus) {
   let state = createDefaultState();
 
@@ -95,29 +158,10 @@ export function createGameState(eventBus) {
       if (!raw) return false;
       const parsed = JSON.parse(raw);
       if (!parsed || typeof parsed !== 'object') return false;
-      const base = createDefaultState();
-      state = {
-        ...base,
-        ...parsed,
-        equipment: {
-          ...base.equipment,
-          ...(parsed.equipment || {}),
-          baitCounts: {
-            ...base.equipment.baitCounts,
-            ...((parsed.equipment && parsed.equipment.baitCounts) || {}),
-          },
-        },
-        boatPose: {
-          ...base.boatPose,
-          ...(parsed.boatPose || {}),
-        },
-      };
-      // Always resume cleanly in sailing or walking (never stuck mid-cast or mid-aquarium modal)
-      if (state.playerMode !== 'sailing' && state.playerMode !== 'walking') {
-        state.playerMode = 'sailing';
-      }
-      if (state.playerMode === 'sailing') {
-        state.insideBuildingId = null;
+      const oldVer = Number(parsed.version) || 1;
+      state = migrateSaveData(parsed);
+      if (oldVer < CURRENT_SAVE_VERSION) {
+        saveNow();
       }
       return true;
     } catch (err) {
@@ -335,6 +379,14 @@ export function createGameState(eventBus) {
       state.boatPose.x = Number(x.toFixed(2));
       state.boatPose.z = Number(z.toFixed(2));
       state.boatPose.yaw = Number(yaw.toFixed(3));
+      scheduleSave();
+    },
+
+    setSetting(key, value) {
+      if (!state.settings) state.settings = {};
+      if (state.settings[key] === value) return;
+      state.settings[key] = value;
+      eventBus.emit('settings:changed', state.settings);
       scheduleSave();
     },
   };

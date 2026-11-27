@@ -445,14 +445,21 @@ const WATER_FRAGMENT_SHADER = /* glsl */ `
 export function createLagoonWater(scene, renderer, atmosphere) {
   const size = new THREE.Vector2();
   renderer.getDrawingBufferSize(size);
+  let refractionScale = 0.75;
+  let lastWidth = Math.max(1, window.innerWidth || size.x);
+  let lastHeight = Math.max(1, window.innerHeight || size.y);
+  let lastDpr = renderer.getPixelRatio ? renderer.getPixelRatio() : 1;
 
-  const depthTexture = new THREE.DepthTexture(Math.max(1, size.x), Math.max(1, size.y));
+  const initW = Math.max(1, Math.floor(size.x * refractionScale));
+  const initH = Math.max(1, Math.floor(size.y * refractionScale));
+
+  const depthTexture = new THREE.DepthTexture(initW, initH);
   depthTexture.type = THREE.UnsignedIntType;
   depthTexture.format = THREE.DepthFormat;
   depthTexture.minFilter = THREE.NearestFilter;
   depthTexture.magFilter = THREE.NearestFilter;
 
-  const refractionRT = new THREE.WebGLRenderTarget(Math.max(1, size.x), Math.max(1, size.y), {
+  const refractionRT = new THREE.WebGLRenderTarget(initW, initH, {
     minFilter: THREE.LinearFilter,
     magFilter: THREE.LinearFilter,
     format: THREE.RGBAFormat,
@@ -528,16 +535,32 @@ export function createLagoonWater(scene, renderer, atmosphere) {
     rippleCursor = (rippleCursor + 1) % MAX_RIPPLES;
   }
 
+  const savedVis = [];
+
+  function applyResize(width, height, dpr) {
+    lastWidth = Math.max(1, width);
+    lastHeight = Math.max(1, height);
+    lastDpr = Math.max(0.5, dpr);
+    const mainW = Math.max(1, Math.floor(lastWidth * lastDpr));
+    const mainH = Math.max(1, Math.floor(lastHeight * lastDpr));
+    const rtW = Math.max(1, Math.floor(mainW * refractionScale));
+    const rtH = Math.max(1, Math.floor(mainH * refractionScale));
+    refractionRT.setSize(rtW, rtH);
+    // Keep uResolution synced to main canvas drawing buffer so gl_FragCoord.xy / uResolution maps 0..1 cleanly!
+    uniforms.uResolution.value.set(mainW, mainH);
+  }
+
   return {
     waterMesh,
     refractionRT,
     uniforms,
     addRipple,
-    resize(width, height, dpr) {
-      const rw = Math.max(1, Math.floor(width * dpr));
-      const rh = Math.max(1, Math.floor(height * dpr));
-      refractionRT.setSize(rw, rh);
-      uniforms.uResolution.value.set(rw, rh);
+    resize: applyResize,
+    setRefractionScale(scale) {
+      const clamped = Math.max(0.4, Math.min(1.0, scale));
+      if (Math.abs(clamped - refractionScale) < 0.01) return;
+      refractionScale = clamped;
+      applyResize(lastWidth, lastHeight, lastDpr);
     },
     update(elapsedTime, camera, boatState) {
       currentTime = elapsedTime;
@@ -571,12 +594,30 @@ export function createLagoonWater(scene, renderer, atmosphere) {
         }
       }
     },
-    renderRefractionPass(rendererInstance, targetScene, camera) {
+    renderRefractionPass(rendererInstance, targetScene, camera, hiddenObjects = null) {
       waterMesh.visible = false;
+      savedVis.length = 0;
+      if (hiddenObjects) {
+        for (let i = 0; i < hiddenObjects.length; i++) {
+          const obj = hiddenObjects[i];
+          if (obj) {
+            savedVis.push(obj.visible);
+            obj.visible = false;
+          } else {
+            savedVis.push(false);
+          }
+        }
+      }
       rendererInstance.setRenderTarget(refractionRT);
       rendererInstance.clear();
       rendererInstance.render(targetScene, camera);
       rendererInstance.setRenderTarget(null);
+      if (hiddenObjects) {
+        for (let i = 0; i < hiddenObjects.length; i++) {
+          const obj = hiddenObjects[i];
+          if (obj) obj.visible = savedVis[i];
+        }
+      }
       waterMesh.visible = true;
     },
   };

@@ -221,7 +221,7 @@ export function createAtmosphereSystem(scene, renderer) {
   const _lightRight = new THREE.Vector3();
   const _lightUp = new THREE.Vector3();
   const _snappedTarget = new THREE.Vector3();
-  const shadowTexelSize = (shadowBound * 2) / 2048;
+  let shadowTexelSize = (shadowBound * 2) / 2048;
 
   // Soft counter-fill directional light
   const fillLight = new THREE.DirectionalLight(
@@ -334,6 +334,16 @@ export function createAtmosphereSystem(scene, renderer) {
     sharedUniforms,
     sunLight,
     applyPreset,
+    setShadowQuality(mapSize = 2048) {
+      const size = Math.max(512, Math.min(2048, mapSize));
+      if (sunLight.shadow.mapSize.x === size && sunLight.shadow.mapSize.y === size) return;
+      sunLight.shadow.mapSize.set(size, size);
+      if (sunLight.shadow.map) {
+        sunLight.shadow.map.dispose();
+        sunLight.shadow.map = null;
+      }
+      shadowTexelSize = (shadowBound * 2) / size;
+    },
     setSunAngles(elevationDeg, azimuthDeg) {
       if (typeof elevationDeg === 'number') state.elevation = clamp(elevationDeg, 8, 82);
       if (typeof azimuthDeg === 'number') state.azimuth = clamp(azimuthDeg, -180, 180);

@@ -1,6 +1,14 @@
 import * as THREE from 'three';
 import { mulberry32, fbm2D, smoothstep, clamp } from './noise.js';
 import { getWorldElevation, getShoreZ } from './terrain.js';
+import {
+  PROMENADE_SPEC,
+  PIER_SPECS,
+  FLAGSTONE_LANE,
+  FARM_PLOT_SPEC,
+  MARKET_STALL_SPEC,
+  LIGHTHOUSE_SPEC,
+} from './world/layout.js';
 
 /**
  * 静水泻湖 · 吉卜力 × 动森 风吹草地与野花系统 (Meadow Grass v2)
@@ -21,14 +29,6 @@ const TERRAIN_HALF = TERRAIN_SIZE / 2;
 
 const CHUNK_SIZE = 8;
 const GRID_STEP = 0.255; // Lush painterly carpet (~15 candidate tufts / m² before masks)
-
-// Stepping-stone flagstone lane to the lighthouse (mirrors town.js lanePoints[6..9])
-const FLAGSTONE_LANE = [
-  [13.4, -16.4],
-  [15.8, -15.7],
-  [18.0, -15.0],
-  [19.8, -14.5],
-];
 
 const WIND_BY_PRESET = { sunny: 0.56, morning: 0.36, sunset: 0.44, overcast: 0.86 };
 
@@ -453,11 +453,9 @@ export function buildMeadowGrass(scene, { town = null, quality } = {}) {
   const grassMat = createMeadowMaterial(false);
   const flowerMat = createMeadowMaterial(true);
 
-  const farm = town?.farmPlotAnchor
-    ? { x: town.farmPlotAnchor.x, z: town.farmPlotAnchor.z - 0.32 - 1.175 }
-    : null;
   const buildings = town?.enterableBuildings || [];
   const probe = new THREE.Vector3();
+  const promBackOffset = PROMENADE_SPEC.frontOffset + PROMENADE_SPEC.width + 0.03;
 
   /**
    * Returns 0 when completely blocked (inside buildings, porches, paths, garden, landmarks),
@@ -469,20 +467,20 @@ export function buildMeadowGrass(scene, { town = null, quality } = {}) {
     const edgeJitter = (fbm2D(x * 0.85 + 2.1, z * 0.85 - 1.7, 2) - 0.5) * 0.14;
     let edgeFactor = 1.0;
 
-    // 1. Cobblestone promenade + stone quay coping (promenade back edge = zShore - 2.93)
-    if (x > -13.18 && x < 13.48) {
-      const promBack = zShore - 2.96 + edgeJitter;
+    // 1. Cobblestone promenade + stone quay coping (from single-source PROMENADE_SPEC)
+    if (x > PROMENADE_SPEC.startX - 0.18 && x < PROMENADE_SPEC.endX + 0.18) {
+      const promBack = zShore - promBackOffset + edgeJitter;
       if (z > promBack) return 0;
       const dProm = promBack - z;
       if (dProm < 0.42) edgeFactor = Math.min(edgeFactor, 0.58 + (dProm / 0.42) * 0.42);
     }
 
-    // 2. Three wooden piers & top stair landings
-    if (Math.abs(x - 4.2) < 1.32 && z > zShore - 0.45) return 0;
-    if (Math.abs(x + 6.8) < 1.22 && z > zShore - 0.45) return 0;
-    if (Math.abs(x - 14.2) < 1.18 && z > zShore - 0.55) return 0;
+    // 2. Three wooden piers & top stair landings (from PIER_SPECS)
+    for (const ps of PIER_SPECS) {
+      if (Math.abs(x - ps.pierX) < ps.grassHalfW && z > zShore + ps.grassBackOffset) return 0;
+    }
 
-    // 3. Stepping-stone flagstone lane to the eastern lighthouse cliff
+    // 3. Stepping-stone flagstone lane to the eastern lighthouse cliff (from FLAGSTONE_LANE)
     for (let i = 0; i < FLAGSTONE_LANE.length - 1; i++) {
       const [ax, az] = FLAGSTONE_LANE[i];
       const [bx, bz] = FLAGSTONE_LANE[i + 1];
@@ -491,18 +489,19 @@ export function buildMeadowGrass(scene, { town = null, quality } = {}) {
       if (d < 1.05) edgeFactor = Math.min(edgeFactor, 0.6 + ((d - 0.66) / 0.39) * 0.4);
     }
 
-    // 4. Fenced garden farm plot beside Player's Home
-    if (farm) {
-      const dxF = Math.abs(x - farm.x);
-      const dzF = Math.abs(z - farm.z);
-      if (dxF < 1.72 && dzF < 1.46) return 0;
+    // 4. Fenced garden farm plot beside Player's Home (from FARM_PLOT_SPEC)
+    if (
+      Math.abs(x - FARM_PLOT_SPEC.x) < FARM_PLOT_SPEC.plotW * 0.5 + 0.25 &&
+      Math.abs(z - FARM_PLOT_SPEC.z) < FARM_PLOT_SPEC.plotD * 0.5 + 0.28
+    ) {
+      return 0;
     }
 
-    // 5. Landmark plinths (lighthouse, keeper shed, fish market stall & drying rack)
-    if (Math.hypot(x - 21.8, z + 15.2) < 2.38) return 0;
-    if (Math.hypot(x - 19.75, z + 15.82) < 1.52) return 0;
-    if (Math.hypot(x + 8.05, z + 19.55) < 1.82) return 0;
-    if (Math.hypot(x + 10.4, z + 19.85) < 0.85) return 0;
+    // 5. Landmark plinths (from LIGHTHOUSE_SPEC & MARKET_STALL_SPEC)
+    if (Math.hypot(x - LIGHTHOUSE_SPEC.x, z - LIGHTHOUSE_SPEC.z) < LIGHTHOUSE_SPEC.exclusionRadius) return 0;
+    if (Math.hypot(x - LIGHTHOUSE_SPEC.shedX, z - LIGHTHOUSE_SPEC.shedZ) < LIGHTHOUSE_SPEC.shedExclusionRadius) return 0;
+    if (Math.hypot(x - MARKET_STALL_SPEC.x, z - MARKET_STALL_SPEC.z) < MARKET_STALL_SPEC.exclusionRadius) return 0;
+    if (Math.hypot(x - MARKET_STALL_SPEC.rackX, z - MARKET_STALL_SPEC.rackZ) < MARKET_STALL_SPEC.rackExclusionRadius) return 0;
 
     // 6. Exact enterable building footprints + real porch / stoop shapes (zero bare yard under windows!)
     for (const b of buildings) {
@@ -725,6 +724,7 @@ export function buildMeadowGrass(scene, { town = null, quality } = {}) {
   const LOD_MIN_DIST = 78;
   const LOD_MIN_FRAC = 0.42;
   const LOD_CULL = meadowUniforms.uFadeFar.value + 6;
+  let runtimeDensityScale = 1.0;
 
   console.info(
     `[Meadow] ${chunks.length} chunks · ${totalTufts} grass tufts · ${totalFlowers} wildflowers · quality ${quality}`
@@ -733,6 +733,10 @@ export function buildMeadowGrass(scene, { town = null, quality } = {}) {
   return {
     group,
     stats: { chunks: chunks.length, tufts: totalTufts, flowers: totalFlowers, quality },
+
+    setQualityScale(scale = 1.0) {
+      runtimeDensityScale = clamp(scale, 0.25, 1.0);
+    },
 
     /**
      * @param {number} elapsed
@@ -760,7 +764,8 @@ export function buildMeadowGrass(scene, { town = null, quality } = {}) {
           if (c.flowerMesh) c.flowerMesh.visible = false;
           continue;
         }
-        const frac = THREE.MathUtils.lerp(1, LOD_MIN_FRAC, smoothstep(LOD_FULL, LOD_MIN_DIST, d));
+        const frac =
+          THREE.MathUtils.lerp(1, LOD_MIN_FRAC, smoothstep(LOD_FULL, LOD_MIN_DIST, d)) * runtimeDensityScale;
         c.grassMesh.visible = true;
         c.grassMesh.count = Math.max(1, Math.ceil(c.tufts * frac));
         if (c.flowerMesh) {

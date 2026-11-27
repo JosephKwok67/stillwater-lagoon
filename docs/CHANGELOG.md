@@ -4,6 +4,19 @@
 
 ---
 
+## [v0.9.2] - 2026-11-28（P0 性能深度优化 + P1 架构模块化重构）
+- **P0 性能优化**：
+  - **水面折射离屏通道优化（`src/water.js`、`src/town.js`、`src/npcs.js`、`src/main.js`）**：将渔村网格拆分为临水接触层（`shoreWaterGroup`：护岸/岸石/栈桥）与内陆层（`inlandVisualGroup`：房屋/树木/灌木/地标/飘烟），折射通道自动隐藏内陆层、NPC 与草地，并引入分辨率缩放（高画质 `0.75×` / 均衡 `0.55×` / 省电 `0.45×`），大幅降低 GPU 渲染负担且水体清澈度与岸线泡沫零损失。
+  - **渔村全量 GPU 实例化与材质共享（`src/town/foliageAndProps.js`、`src/town/pier.js`、`src/town/cottage.js`）**：约 80 棵树（~480 网格 → 2 个 `InstancedMesh`）、灌木与灌木花（消除循环内重复 `new Material`）、28 段石护岸与压顶（56 → 2）、岸石与悬崖礁石、踏石小径、栈桥木板与木桩、菜园 12 地块，以及全部烟囱飘烟（消除 `smokeMat.clone()`，改为单 `InstancedMesh` + `aOpacity` 实例属性）全面合批，大幅减少 Draw Call。
+  - **三档画质性能切换（`index.html`、`src/style.css`、`src/atmosphere.js`、`src/grass.js`、`src/main.js`）**：在「画风与阳光天气」面板新增 `高画质 / 均衡 / 省电流畅` 实时切换（联动 DPR 上限、太阳阴影贴图 `2048/1024` + 纹理素对齐防抖、水面折射分辨率、草地密度与非核心点光源开关），并持久化至存档设置。
+  - **Vite 生产构建分包（`vite.config.js`）**：拆分 `vendor-three`、`vendor-three-addons`、`app-ui-catalog`，主业务包由 `870 kB` 降至 `216 kB`（gzip `77.5 kB`），实现零警告构建。
+- **P1 架构与可维护性升级**：
+  - **单一世界布局数据源（`src/world/layout.js`）**：统一沉淀房屋、码头、护岸、石板长廊、踏石小径、菜园、渔市与灯塔坐标，`src/town.js`、`src/town/*` 与 `src/grass.js` 共享同一份定义，彻底消除坐标重复维护。
+  - **O(1) 空间哈希碰撞（`src/world/spatialHash.js`）**：陆地圆形碰撞查询由 O(n) 线性遍历升级为 4m 单元 `SpatialHash2D`（零每帧 GC 分配）。
+  - **超大模块职责拆分**：`src/town.js`（2109 行 → ~520 行）拆出 `src/town/aquarium.js`、`cottage.js`、`pier.js`、`foliageAndProps.js`；`src/main.js`（1807 行 → ~560 行）拆出 `src/core/cameraDirector.js`、`sleepSequence.js` 与 `src/ui/shopAndModals.js`，严格保留全部原有游戏框架与外部接口。
+  - **版本化存档迁移与版本同步（`src/core/gameState.js`、`package.json`）**：引入 `CURRENT_SAVE_VERSION = 2` 与 `migrateSaveData()` 自动迁移管线（无缝兼容 v1 旧存档并持久化画质/拟声设置），同步 `package.json` 版本至 `0.9.2`。
+- **实机验证**：`npm run build` 0 警告通过（1.18s），本地浏览器实机回归验收（水体折射、实例化渔村与飘烟、三档画质热切、图鉴/行走碰撞）全部 0 控制台/WebGL 报错。
+
 ## [v0.9.1] - 2026-11-28（吉卜力 × 动森 GPU 实例化风吹草地与野花系统）
 - **新增草地系统模块（`src/grass.js`）**，仅在 `src/main.js` 挂载初始化与帧更新、在 `src/environment.js` 微调草地底色实现根部无缝融合，其余游戏架构与玩法逻辑保持零改动：
   - **GPU 实例化与性能分级**：每簇 7 片柔宽弯叶（2 段 28 三角形），8m 分块配合视锥剔除与距离稀疏化 LOD（远处柔和下沉淡出）；水面折射离屏通道通过 `scene.onBeforeRender` 自动跳过草地以保持零额外开销；移动端/低核数 CPU 自动降级密度至 55%。

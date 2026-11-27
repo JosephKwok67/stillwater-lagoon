@@ -207,6 +207,9 @@ function createVillagerMesh(kind) {
  * Spawns all 3 core Lakeside Town NPCs (Ah Lian, Old Zhou, Uncle Hai) at their homes/posts!
  */
 export function buildTownNpcs(scene, town) {
+  const npcGroup = new THREE.Group();
+  npcGroup.name = 'TownNPCs';
+  scene.add(npcGroup);
   const npcs = [];
   const npcColliders = [];
 
@@ -259,7 +262,7 @@ export function buildTownNpcs(scene, town) {
     const rig = createVillagerMesh(s.id);
     rig.root.position.copy(s.pos);
     rig.root.rotation.y = s.homeYaw;
-    scene.add(rig.root);
+    npcGroup.add(rig.root);
 
     npcColliders.push({ x: s.pos.x, z: s.pos.z, radius: 0.36 });
 
@@ -289,6 +292,7 @@ export function buildTownNpcs(scene, town) {
   }
 
   return {
+    root: npcGroup,
     npcs,
     npcColliders,
     getById(id) {
