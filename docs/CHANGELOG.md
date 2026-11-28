@@ -4,6 +4,21 @@
 
 ---
 
+## [v0.9.4] - 2026-11-28（海岸礁石 & 苔藓小岛 4 套精模水粉烘焙与实机落地）
+- **零地形改动替换全部旧多面体岸石、灯塔崖岩与湖心小岛**：对照 Codex Image 2.5 设定板（`art_pipeline/concepts/storyboards/lagoon_rocks_islets_studies.png`），经 Blender 5.3 三轮精雕与四视角棚拍验收后全量接入游戏：
+  - **Blender 5.3 重塑与水粉+AO 烘焙管线（`art_pipeline/blender_ag/build_coastal_rocks_islets_v1.py`）**：
+    - 彻底消除白模的球体极点捏皱与水平夹缝，重构多块斜向层理花岗岩结构与光滑内收海蚀水线凹槽，并将两座小岛的水下岩裙平缓延伸至 `-3.60m`（缩放后依然深扎湖底零悬空）；
+    - 采用「沿高精岩面法线直接贴合生成 + 最大连通单块提取」工艺制作岛顶厚苔藓草毯，实现 360° 零悬空、零穿模与自然草岩咬合；
+    - Cycles 烘焙真实线性吉卜力暖金砂岩/冷紫灰阴影、湿润海蚀带与柔和几何 AO（12-Pass UV 渗色膨胀），导出 4 套单材质轻量化精模：`rock_shore_wide.glb`（1,850 tris / 215 KB）、`rock_cliff_crag.glb`（2,100 tris / 229 KB）、`islet_plateau.glb`（3,450 tris / 577 KB）、`islet_peak.glb`（3,699 tris / 679 KB）。
+  - **5-Draw-Call GPU 实例化与实时水体联动（`src/core/glbLoader.js`、`src/town/foliageAndProps.js`、`src/town.js`、`src/environment.js`、`src/main.js`）**：
+    - 新增 `loadLagoonRockGlb()` 加载器，自动叠加实时水线湿润压暗与水下动态青绿焦散着色器（兼容 `InstancedMesh`），保留 `src/terrain.js` 零改动及全部既有船只/陆地碰撞体；
+    - 替换 12 块护岸水线礁石、8 块灯塔海角崖岩与 11 座湖心苔藓小岛（含近景缓顶岛、双峰礁岛与低矮水线出露岩），全部纳入水面折射通道以呈现清澈水下岩裙。
+- **验证与同步**：Blender 四视角棚拍 3 轮严检通过 + `vite build` 0 警告通过 + 浏览器晴日全景/日落灯塔崖岩/52° 俯视小岛/码头近景/划船交互全项 0 报错验收（50/50 请求 200 OK）。
+
+## 2026-11-28 · 海岸礁石与苔藓小岛白模
+
+- 交付岸边宽扁礁石、灯塔坡崖岩、缓顶苔藓小岛和双峰苔藓礁岛。四件原点均在水线，两座岛的草甸帽与岩体分别为闭合网格，并沿共用接合面贴合。[Blender 工程](../art_pipeline/blender/lagoon_rocks_islets_whitebox.blend) · [双视角评审板](../art_pipeline/staging/rocks_islets_whitebox/review.jpg)
+
 ## [v0.9.3] - 2026-11-28（3 种吉卜力岸树 GPU 实例化落地 + 远景背山无缝融入 + P2 待办建档）
 - **零地形改动前提下的场景美术大升级**：未改动 `src/terrain.js` 既有可游玩地形，将 Codex 岸树与渔村背山两套白模经 Blender 5.3 轻量化与水粉烘焙后正式接入游戏：
   - **三棵岸树精模管线（`art_pipeline/blender_ag/build_coastal_trees_v1.py`）**：将原 160k/30k/60k 面高模压减至 `tree_pine.glb`（3,849 tris / 498 KB）、`tree_fir.glb`（3,119 tris / 523 KB）、`tree_alder.glb`（3,398 tris / 451 KB）；增加 `-0.55m` 深根裙与抱地根尖（斜坡零悬空）、球面软法线与真实线性吉卜力水粉+AO 烘焙贴图（6-Pass UV 渗色膨胀去黑缝）。

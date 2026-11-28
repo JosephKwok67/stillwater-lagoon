@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { meadowUniforms } from '../grass.js';
+import { applyLagoonMaterialShader } from '../underwaterMaterial.js';
 
 const loader = new GLTFLoader();
 
@@ -342,6 +343,48 @@ export function loadEnvironmentGlb(url) {
           }
         });
         resolve({ model });
+      },
+      undefined,
+      (err) => reject(err)
+    );
+  });
+}
+
+/**
+ * Loads a GPU-instanceable sculpted Ghibli Coastal Rock or Mossy Islet GLB
+ * (`rock_shore_wide.glb`, `rock_cliff_crag.glb`, `islet_plateau.glb`, `islet_peak.glb`)
+ * and hooks our real-time lagoon waterline darkening + underwater caustics shader onto
+ * its baked gouache material (fully compatible with InstancedMesh!).
+ */
+export function loadLagoonRockGlb(url, { causticsScale = 0.85, wetline = true } = {}) {
+  return new Promise((resolve, reject) => {
+    loader.load(
+      url,
+      (gltf) => {
+        let targetMesh = null;
+        gltf.scene.updateMatrixWorld(true);
+        gltf.scene.traverse((obj) => {
+          if (!targetMesh && obj.isMesh) targetMesh = obj;
+        });
+        if (!targetMesh) {
+          reject(new Error(`No mesh found in lagoon rock GLB: ${url}`));
+          return;
+        }
+        const geo = targetMesh.geometry.clone();
+        geo.applyMatrix4(targetMesh.matrixWorld);
+        const rawMat = Array.isArray(targetMesh.material) ? targetMesh.material[0] : targetMesh.material;
+        const mat = rawMat ? rawMat.clone() : new THREE.MeshStandardMaterial({ color: 0xffffff });
+        if (mat.isMeshStandardMaterial) {
+          mat.roughness = 0.90;
+          mat.metalness = 0.0;
+          mat.fog = true;
+        }
+        applyLagoonMaterialShader(mat, {
+          causticsScale,
+          wetline,
+          isEmergentIslet: false,
+        });
+        resolve({ geo, mat });
       },
       undefined,
       (err) => reject(err)

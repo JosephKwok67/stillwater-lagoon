@@ -457,6 +457,10 @@ export function buildLagoonEnvironment(scene) {
     { x: 2.5, z: 19.5, rx: 2.5, rz: 1.8, h: 1.12, peaked: true, rot: 1.4, seed: 121 },
   ];
 
+  const procIsletGroup = new THREE.Group();
+  procIsletGroup.name = 'Lagoon_ProceduralIslets';
+  envGroup.add(procIsletGroup);
+
   for (const sp of isletSpecs) {
     const geo = createIsletGeometry(sp.seed, {
       rx: sp.rx,
@@ -469,13 +473,117 @@ export function buildLagoonEnvironment(scene) {
     mesh.rotation.y = sp.rot;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    envGroup.add(mesh);
+    procIsletGroup.add(mesh);
 
     isletColliders.push({
       x: sp.x,
       z: sp.z,
       radius: Math.max(sp.rx, sp.rz) * 0.95 + 0.55,
     });
+  }
+
+  // GPU-instanced Sculpted Ghibli Mossy Islets hot-swap container (zero terrain/collider change!)
+  const glbIsletGroup = new THREE.Group();
+  glbIsletGroup.name = 'Lagoon_SculptedIsletsGLB';
+  envGroup.add(glbIsletGroup);
+
+  function attachIsletGlbs(assetMap) {
+    if (!assetMap || (!assetMap.islet_plateau && !assetMap.islet_peak)) return false;
+    while (glbIsletGroup.children.length > 0) {
+      glbIsletGroup.remove(glbIsletGroup.children[0]);
+    }
+    const plateauSpots = [];
+    const peakSpots = [];
+    const lowRockSpots = [];
+
+    for (const sp of isletSpecs) {
+      if (sp.h < 0.5 && assetMap.rock_shore_wide) {
+        lowRockSpots.push(sp);
+      } else if (sp.peaked && assetMap.islet_peak) {
+        peakSpots.push(sp);
+      } else if (assetMap.islet_plateau) {
+        plateauSpots.push(sp);
+      }
+    }
+
+    const d = new THREE.Object3D();
+    const tint = new THREE.Color();
+
+    if (plateauSpots.length && assetMap.islet_plateau?.geo && assetMap.islet_plateau?.mat) {
+      const inst = new THREE.InstancedMesh(
+        assetMap.islet_plateau.geo,
+        assetMap.islet_plateau.mat,
+        plateauSpots.length
+      );
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      plateauSpots.forEach((sp, i) => {
+        // Baked islet_plateau half-extents: X ~5.4m, Z ~4.2m, top ~2.8m, deep skirt -3.6m!
+        const sx = (sp.rx * 1.06) / 5.4;
+        const sz = (sp.rz * 1.06) / 4.2;
+        const sy = Math.max(0.42, (sp.h * 1.32) / 2.65);
+        d.position.set(sp.x, -0.02, sp.z);
+        d.rotation.set(0, sp.rot, 0);
+        d.scale.set(sx, sy, sz);
+        d.updateMatrix();
+        inst.setMatrixAt(i, d.matrix);
+        const w = 0.95 + ((sp.seed * 13) % 9) * 0.011;
+        tint.setRGB(w * 1.01, w * 1.0, w * 0.98);
+        inst.setColorAt(i, tint);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      glbIsletGroup.add(inst);
+    }
+
+    if (peakSpots.length && assetMap.islet_peak?.geo && assetMap.islet_peak?.mat) {
+      const inst = new THREE.InstancedMesh(
+        assetMap.islet_peak.geo,
+        assetMap.islet_peak.mat,
+        peakSpots.length
+      );
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      peakSpots.forEach((sp, i) => {
+        // Baked islet_peak half-extents: X ~6.6m, Z ~5.1m, top ~5.2m, deep skirt -3.6m!
+        const sx = (sp.rx * 1.08) / 6.5;
+        const sz = (sp.rz * 1.08) / 5.0;
+        const sy = Math.max(0.38, (sp.h * 1.48) / 4.85);
+        d.position.set(sp.x, -0.02, sp.z);
+        d.rotation.set(0, sp.rot, 0);
+        d.scale.set(sx, sy, sz);
+        d.updateMatrix();
+        inst.setMatrixAt(i, d.matrix);
+        const w = 0.94 + ((sp.seed * 17) % 10) * 0.011;
+        tint.setRGB(w * 1.02, w * 1.0, w * 0.97);
+        inst.setColorAt(i, tint);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      glbIsletGroup.add(inst);
+    }
+
+    if (lowRockSpots.length && assetMap.rock_shore_wide?.geo && assetMap.rock_shore_wide?.mat) {
+      const inst = new THREE.InstancedMesh(
+        assetMap.rock_shore_wide.geo,
+        assetMap.rock_shore_wide.mat,
+        lowRockSpots.length
+      );
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      lowRockSpots.forEach((sp, i) => {
+        d.position.set(sp.x, -0.04, sp.z);
+        d.rotation.set(0, sp.rot, 0);
+        d.scale.set(sp.rx * 0.85, Math.max(0.42, sp.h * 1.15), sp.rz * 0.85);
+        d.updateMatrix();
+        inst.setMatrixAt(i, d.matrix);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      glbIsletGroup.add(inst);
+    }
+
+    procIsletGroup.visible = false;
+    return true;
   }
 
   // -------------------------------------------------------------------------
@@ -1000,6 +1108,7 @@ export function buildLagoonEnvironment(scene) {
   return {
     envGroup,
     isletColliders,
+    attachIsletGlbs,
     update(dt, elapsedTime, boatState, dogPos) {
       const clampedDt = Math.min(dt, 0.05);
       const boatPos = boatState ? boatState.pos : null;

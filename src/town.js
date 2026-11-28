@@ -359,7 +359,7 @@ export function buildLakesideTown(scene) {
   const quayCapMat = new THREE.MeshStandardMaterial({ color: 0xc9c0ae, roughness: 0.88 });
   const quayWallMat = new THREE.MeshStandardMaterial({ color: 0x918a7b, roughness: 0.92 });
   const quayRockMat = new THREE.MeshStandardMaterial({ color: 0x969184, roughness: 0.92, flatShading: true });
-  buildInstancedQuayAndBoulders({
+  const rockSystem = buildInstancedQuayAndBoulders({
     shoreWaterGroup,
     inlandVisualGroup,
     quayWallMat,
@@ -747,6 +747,10 @@ export function buildLakesideTown(scene) {
 
     attachTreeGlbs(speciesMap) {
       return foliageSystem.attachTreeGlbs(speciesMap);
+    },
+
+    attachRockGlbs(rockMap) {
+      return rockSystem.attachRockGlbs(rockMap);
     },
 
     /**

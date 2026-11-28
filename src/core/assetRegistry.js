@@ -143,6 +143,10 @@ export const MODEL_PATHS = {
     tree_fir: './assets/models/environment/tree_fir.glb',
     tree_alder: './assets/models/environment/tree_alder.glb',
     backdrop_mountain: './assets/models/environment/backdrop_mountain.glb',
+    rock_shore_wide: './assets/models/environment/rock_shore_wide.glb',
+    rock_cliff_crag: './assets/models/environment/rock_cliff_crag.glb',
+    islet_plateau: './assets/models/environment/islet_plateau.glb',
+    islet_peak: './assets/models/environment/islet_peak.glb',
   },
 };
 

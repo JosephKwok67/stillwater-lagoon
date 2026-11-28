@@ -61,7 +61,7 @@ export function buildInstancedQuayAndBoulders({
   capInst.instanceMatrix.needsUpdate = true;
   shoreWaterGroup.add(wallInst, capInst);
 
-  // 2. Waterline Coastal Boulders (1 draw call in shoreWaterGroup so water depth foam hugs them!)
+  // 2. Waterline Coastal Boulders (procedural fallback, hot-swaps to sculpted `rock_shore_wide.glb`!)
   const rockGeo = new THREE.DodecahedronGeometry(1, 1);
   const shoreRockInst = new THREE.InstancedMesh(rockGeo, quayRockMat, SHORE_BOULDERS.length);
   shoreRockInst.castShadow = true;
@@ -79,7 +79,7 @@ export function buildInstancedQuayAndBoulders({
   shoreRockInst.instanceMatrix.needsUpdate = true;
   shoreWaterGroup.add(shoreRockInst);
 
-  // 3. Lighthouse Headland Cliff Boulders (1 draw call in inlandVisualGroup)
+  // 3. Lighthouse Headland Cliff Boulders (procedural fallback, hot-swaps to sculpted `rock_cliff_crag.glb`!)
   const cliffRockInst = new THREE.InstancedMesh(rockGeo, quayRockMat, CLIFF_ROCKS.length);
   cliffRockInst.castShadow = true;
   cliffRockInst.receiveShadow = true;
@@ -95,6 +95,89 @@ export function buildInstancedQuayAndBoulders({
   }
   cliffRockInst.instanceMatrix.needsUpdate = true;
   inlandVisualGroup.add(cliffRockInst);
+
+  // GPU-Instanced Sculpted Coastal Rocks GLB hot-swap container (in shoreWaterGroup so waterline
+  // tidal notches & submerged skirts refract seamlessly through the clear turquoise lagoon!)
+  const glbRockGroup = new THREE.Group();
+  glbRockGroup.name = 'Town_CoastalRocksGLB';
+  shoreWaterGroup.add(glbRockGroup);
+
+  function attachRockGlbs(rockMap) {
+    if (!rockMap) return false;
+    while (glbRockGroup.children.length > 0) {
+      glbRockGroup.remove(glbRockGroup.children[0]);
+    }
+    const tintCol = new THREE.Color();
+    let swapped = false;
+
+    if (rockMap.rock_shore_wide?.geo && rockMap.rock_shore_wide?.mat) {
+      const inst = new THREE.InstancedMesh(
+        rockMap.rock_shore_wide.geo,
+        rockMap.rock_shore_wide.mat,
+        SHORE_BOULDERS.length
+      );
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      for (let i = 0; i < SHORE_BOULDERS.length; i++) {
+        const [bx, zOff, br] = SHORE_BOULDERS[i];
+        const bz = getShoreZ(bx) + zOff + 0.08;
+        // Origin of rock_shore_wide.glb is exactly at waterline (y=0) with -0.65m reef skirt!
+        dummy.position.set(bx, -0.02 + (i % 3) * 0.04, bz);
+        dummy.rotation.set(
+          Math.sin(i * 2.1) * 0.05,
+          i * 1.37 + 0.42,
+          Math.cos(i * 1.7) * 0.05
+        );
+        dummy.scale.set(br * 0.94, br * 0.86, br * 0.92);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+        const w = 0.94 + ((i * 37) % 11) * 0.01;
+        tintCol.setRGB(w * 1.02, w * 1.0, w * 0.97);
+        inst.setColorAt(i, tintCol);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      glbRockGroup.add(inst);
+      shoreRockInst.visible = false;
+      swapped = true;
+    }
+
+    if (rockMap.rock_cliff_crag?.geo && rockMap.rock_cliff_crag?.mat) {
+      const inst = new THREE.InstancedMesh(
+        rockMap.rock_cliff_crag.geo,
+        rockMap.rock_cliff_crag.mat,
+        CLIFF_ROCKS.length
+      );
+      inst.castShadow = true;
+      inst.receiveShadow = true;
+      for (let i = 0; i < CLIFF_ROCKS.length; i++) {
+        const [rx, rz, rr] = CLIFF_ROCKS[i];
+        const ry = getWorldElevation(rx, rz);
+        // Grounded cleanly into cliff slope & shoreline with -0.85m deep skirt!
+        dummy.position.set(rx, Math.max(-0.08, ry - 0.24), rz);
+        dummy.rotation.set(
+          Math.sin(i * 1.9) * 0.06,
+          i * 1.18 + 0.35,
+          Math.cos(i * 1.4) * 0.06
+        );
+        dummy.scale.set(rr * 0.90, rr * 0.86, rr * 0.88);
+        dummy.updateMatrix();
+        inst.setMatrixAt(i, dummy.matrix);
+        const w = 0.94 + ((i * 29) % 10) * 0.011;
+        tintCol.setRGB(w * 1.02, w * 0.99, w * 0.96);
+        inst.setColorAt(i, tintCol);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      glbRockGroup.add(inst);
+      cliffRockInst.visible = false;
+      swapped = true;
+    }
+
+    return swapped;
+  }
+
+  return { attachRockGlbs };
 }
 
 /**

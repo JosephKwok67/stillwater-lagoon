@@ -18,7 +18,11 @@
     "tree_pine": true,
     "tree_fir": true,
     "tree_alder": true,
-    "backdrop_mountain": true
+    "backdrop_mountain": true,
+    "rock_shore_wide": true,
+    "rock_cliff_crag": true,
+    "islet_plateau": true,
+    "islet_peak": true
   },
   "fishIconsDelivered": [
     "stillwater_koi",

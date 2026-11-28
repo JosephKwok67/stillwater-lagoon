@@ -35,6 +35,7 @@ import {
   loadBuildingGlb,
   loadTreeGlb,
   loadEnvironmentGlb,
+  loadLagoonRockGlb,
 } from './core/glbLoader.js';
 
 // ---------------------------------------------------------------------------
@@ -213,6 +214,28 @@ fetchAssetManifest().then(async (manifest) => {
     loadEnvironmentGlb(MODEL_PATHS.environment.backdrop_mountain)
       .then((data) => town.attachBackdropMountainGlb(data))
       .catch((err) => console.warn('[GLB] backdrop_mountain load failed:', err));
+  }
+  const rockIsletIds = ['rock_shore_wide', 'rock_cliff_crag', 'islet_plateau', 'islet_peak'].filter(
+    (id) => envFlags[id] && MODEL_PATHS.environment?.[id]
+  );
+  if (rockIsletIds.length) {
+    Promise.allSettled(
+      rockIsletIds.map((id) =>
+        loadLagoonRockGlb(MODEL_PATHS.environment[id], {
+          causticsScale: id.startsWith('islet') ? 0.95 : 0.85,
+          wetline: true,
+        }).then((data) => [id, data])
+      )
+    ).then((results) => {
+      const loaded = {};
+      for (const r of results) {
+        if (r.status === 'fulfilled') loaded[r.value[0]] = r.value[1];
+      }
+      if (Object.keys(loaded).length) {
+        if (town.attachRockGlbs) town.attachRockGlbs(loaded);
+        if (environment.attachIsletGlbs) environment.attachIsletGlbs(loaded);
+      }
+    });
   }
 });
 
